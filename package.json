@@ -1,0 +1,52 @@
+{
+	"name": "stream-blockify",
+	"version": "1.0.0",
+	"description": "A high-performance Node.js stream transformer that chunks input into fixed-size blocks. Perfect for processing large files, network protocols, or any scenario requiring precise data segmentation. Written in TypeScript for reliability and type safety.",
+	"main": "index.js",
+	"scripts": {
+		"lint": "eslint \"src/**/*.ts\" ",
+		"lint:fix": "eslint  \"src/**/*.ts\" --fix",
+		"build": "tsc",
+		"prestart": "npm run build",
+		"clean": "rm -rf dist",
+		"ts:check-types": "tsc",
+		"ts:check-types:watch": "tsc --watch",
+		"check-code": "npm run test && npm run lint && npm run ts:check-types",
+		"test": "jest",
+		"test:watch": "jest --watch",
+		"test:coverage": "jest --coverage",
+		"prepublish": "npm run clean && npm run build"
+	},
+	"keywords": [
+		"nodejs",
+		"typescript",
+		"stream",
+		"buffer",
+		"chunking",
+		"data-processing",
+		"block-stream",
+		"stream-transformer"
+	],
+	"author": {
+		"name": "Ahmed Eltaher",
+		"email": "ahmedheltaher@gmail.com",
+		"url": "https://github.com/ahmedheltaher"
+	},
+	"license": "ISC",
+	"devDependencies": {
+		"@types/debug": "^4.1.12",
+		"@types/jest": "^29.5.14",
+		"@types/node": "^22.13.4",
+		"@typescript-eslint/eslint-plugin": "^8.24.0",
+		"@typescript-eslint/parser": "^8.24.0",
+		"debug": "^4.4.0",
+		"eslint": "^9.20.1",
+		"eslint-config-prettier": "^10.0.1",
+		"eslint-plugin-prettier": "^5.2.3",
+		"jest": "^29.7.0",
+		"prettier": "^3.5.1",
+		"ts-jest": "^29.2.5",
+		"ts-node": "^10.9.2",
+		"typescript": "^5.7.3"
+	}
+}

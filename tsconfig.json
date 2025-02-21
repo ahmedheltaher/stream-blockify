@@ -1,0 +1,43 @@
+{
+	"compilerOptions": {
+		"target": "es5",
+		"lib": ["esnext", "es2018.promise", "es2017", "dom", "esnext.asynciterable"],
+		"allowJs": true,
+		"downlevelIteration": true,
+		"skipLibCheck": true,
+		"allowSyntheticDefaultImports": true,
+		"strict": true,
+		"forceConsistentCasingInFileNames": true,
+		"module": "commonjs",
+		"moduleResolution": "node",
+		"resolveJsonModule": true,
+		"isolatedModules": false,
+		"emitDecoratorMetadata": true,
+		"strictPropertyInitialization": false,
+		"experimentalDecorators": true,
+		"esModuleInterop": true,
+		"noImplicitReturns": true,
+		"noImplicitThis": true,
+		"strictNullChecks": true,
+		"noImplicitAny": true,
+		"noUnusedParameters": false,
+		"noUnusedLocals": false,
+
+		// lib settings
+		"removeComments": true,
+		"sourceMap": false,
+		"outDir": "dist",
+		"noEmit": false,
+		"declaration": true
+	},
+	"include": [
+		"src/**/*",
+		"__tests__/parsers/array-parser.test.ts",
+		"__tests__/parsers/boolean-parser.test.ts",
+		"__tests__/parsers/enum-parser.test.ts",
+		"__tests__/parsers/number-parser.test.ts",
+		"__tests__/parsers/parser-registry.test.ts",
+		"__tests__/parsers/string-parser.test.ts",
+		"__tests__/loader.test.ts"
+	]
+}
