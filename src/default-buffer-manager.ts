@@ -14,18 +14,16 @@ export class DefaultBufferManager implements BufferManager {
 		return this.totalLength;
 	}
 
-	public getChunks(chunkSize: number): Buffer[] {
-		const chunks: Buffer[] = [];
-		let currentOffset = 0;
+	public getChunks(size: number): Buffer[] {
+		if (size <= 0 || this.totalLength === 0) return [];
 
-		while (this.totalLength - currentOffset >= chunkSize) {
-			const chunk = this.createChunk(chunkSize);
+		const chunks: Buffer[] = [];
+		while (this.totalLength >= size) {
+			const chunk = this.createChunk(size);
 			if (!chunk) break;
 			chunks.push(chunk);
-			currentOffset += chunkSize;
 		}
 
-		this.updateBuffersAfterChunking(currentOffset);
 		return chunks;
 	}
 
@@ -36,7 +34,7 @@ export class DefaultBufferManager implements BufferManager {
 	}
 
 	public getRemainingData(): Buffer | null {
-		if (this.buffers.length === 0) return null;
+		if (this.totalLength === 0) return null;
 		if (this.buffers.length === 1) {
 			return this.offset ? this.buffers[0].subarray(this.offset) : this.buffers[0];
 		}
@@ -45,64 +43,39 @@ export class DefaultBufferManager implements BufferManager {
 		let outputOffset = 0;
 
 		for (const buffer of this.buffers) {
-			const length = buffer.length - this.offset;
-			buffer.copy(outBuffer, outputOffset, this.offset);
+			const start = buffer === this.buffers[0] ? this.offset : 0;
+			const length = buffer.length - start;
+			buffer.copy(outBuffer, outputOffset, start);
 			outputOffset += length;
-			this.offset = 0;
 		}
 
 		return outBuffer;
 	}
 
 	private createChunk(size: number): Buffer | null {
-		let chunk: Buffer | undefined;
+		if (this.totalLength < size) return null;
+
+		const chunk = Buffer.alloc(size);
 		let chunkOffset = 0;
 		let remainingSize = size;
-		let bufferIndex = 0;
 
-		while (remainingSize > 0 && bufferIndex < this.buffers.length) {
-			const currentBuffer = this.buffers[bufferIndex];
+		while (remainingSize > 0 && this.buffers.length > 0) {
+			const currentBuffer = this.buffers[0];
 			const availableLength = currentBuffer.length - this.offset;
 			const copyLength = Math.min(availableLength, remainingSize);
 
-			if (!chunk) {
-				if (currentBuffer.length === size && this.offset === 0) {
-					return currentBuffer;
-				}
-				chunk = Buffer.alloc(size);
-			}
-
 			currentBuffer.copy(chunk, chunkOffset, this.offset, this.offset + copyLength);
-
-			if (availableLength > remainingSize) {
-				this.offset += remainingSize;
-				break;
-			}
-
+			this.offset += copyLength;
 			chunkOffset += copyLength;
 			remainingSize -= copyLength;
-			bufferIndex++;
-			this.offset = 0;
-		}
 
-		return chunk ?? null;
-	}
-
-	private updateBuffersAfterChunking(processedLength: number): void {
-		let remainingLength = processedLength;
-		while (remainingLength > 0 && this.buffers.length > 0) {
-			const currentBuffer = this.buffers[0];
-			const bufferLength = currentBuffer.length - this.offset;
-
-			if (bufferLength > remainingLength) {
-				this.offset += remainingLength;
-				break;
+			if (this.offset >= currentBuffer.length) {
+				this.buffers.shift();
+				this.offset = 0;
 			}
-
-			remainingLength -= bufferLength;
-			this.totalLength -= bufferLength;
-			this.buffers.shift();
-			this.offset = 0;
 		}
+
+		this.totalLength -= size;
+		return chunk;
 	}
 }

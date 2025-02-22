@@ -1,52 +1,92 @@
 import { DefaultStreamStateManager } from '../src/default-stream-state-manager';
 
 describe('DefaultStreamStateManager', () => {
-	let manager: DefaultStreamStateManager;
+	let stateManager: DefaultStreamStateManager;
 
 	beforeEach(() => {
-		manager = new DefaultStreamStateManager();
+		stateManager = new DefaultStreamStateManager();
 	});
 
-	test('should initialize with default state', () => {
-		expect(manager.isPaused()).toBe(false);
-		expect(manager.isEmitting()).toBe(false);
-		expect(manager.isEnded()).toBe(false);
-		expect(manager.isEndEmitted()).toBe(false);
-		expect(manager.needsDrain()).toBe(false);
+	describe('initial state', () => {
+		it('should initialize with correct default values', () => {
+			expect(stateManager.isPaused()).toBe(false);
+			expect(stateManager.isEmitting()).toBe(false);
+			expect(stateManager.isEnded()).toBe(false);
+			expect(stateManager.isEndEmitted()).toBe(false);
+			expect(stateManager.needsDrain()).toBe(false);
+		});
 	});
 
-	test('should set and get paused state', () => {
-		manager.setPaused(true);
-		expect(manager.isPaused()).toBe(true);
-		manager.setPaused(false);
-		expect(manager.isPaused()).toBe(false);
+	describe('paused state', () => {
+		it('should update and retrieve paused state', () => {
+			stateManager.setPaused(true);
+			expect(stateManager.isPaused()).toBe(true);
+
+			stateManager.setPaused(false);
+			expect(stateManager.isPaused()).toBe(false);
+		});
 	});
 
-	test('should set and get emitting state', () => {
-		manager.setEmitting(true);
-		expect(manager.isEmitting()).toBe(true);
-		manager.setEmitting(false);
-		expect(manager.isEmitting()).toBe(false);
+	describe('emitting state', () => {
+		it('should update and retrieve emitting state', () => {
+			stateManager.setEmitting(true);
+			expect(stateManager.isEmitting()).toBe(true);
+
+			stateManager.setEmitting(false);
+			expect(stateManager.isEmitting()).toBe(false);
+		});
 	});
 
-	test('should set and get ended state', () => {
-		manager.setEnded(true);
-		expect(manager.isEnded()).toBe(true);
-		manager.setEnded(false);
-		expect(manager.isEnded()).toBe(false);
+	describe('ended state', () => {
+		it('should update and retrieve ended state', () => {
+			stateManager.setEnded(true);
+			expect(stateManager.isEnded()).toBe(true);
+
+			stateManager.setEnded(false);
+			expect(stateManager.isEnded()).toBe(false);
+		});
 	});
 
-	test('should set and get endEmitted state', () => {
-		manager.setEndEmitted(true);
-		expect(manager.isEndEmitted()).toBe(true);
-		manager.setEndEmitted(false);
-		expect(manager.isEndEmitted()).toBe(false);
+	describe('endEmitted state', () => {
+		it('should update and retrieve endEmitted state', () => {
+			stateManager.setEndEmitted(true);
+			expect(stateManager.isEndEmitted()).toBe(true);
+
+			stateManager.setEndEmitted(false);
+			expect(stateManager.isEndEmitted()).toBe(false);
+		});
 	});
 
-	test('should set and get needDrain state', () => {
-		manager.setNeedDrain(true);
-		expect(manager.needsDrain()).toBe(true);
-		manager.setNeedDrain(false);
-		expect(manager.needsDrain()).toBe(false);
+	describe('needDrain state', () => {
+		it('should update and retrieve needDrain state', () => {
+			stateManager.setNeedDrain(true);
+			expect(stateManager.needsDrain()).toBe(true);
+
+			stateManager.setNeedDrain(false);
+			expect(stateManager.needsDrain()).toBe(false);
+		});
+	});
+
+	describe('combined state operations', () => {
+		it('should handle multiple state changes independently', () => {
+			stateManager.setPaused(true);
+			stateManager.setEmitting(true);
+			stateManager.setNeedDrain(true);
+
+			expect(stateManager.isPaused()).toBe(true);
+			expect(stateManager.isEmitting()).toBe(true);
+			expect(stateManager.needsDrain()).toBe(true);
+			expect(stateManager.isEnded()).toBe(false);
+			expect(stateManager.isEndEmitted()).toBe(false);
+
+			stateManager.setEnded(true);
+			stateManager.setPaused(false);
+
+			expect(stateManager.isPaused()).toBe(false);
+			expect(stateManager.isEmitting()).toBe(true);
+			expect(stateManager.needsDrain()).toBe(true);
+			expect(stateManager.isEnded()).toBe(true);
+			expect(stateManager.isEndEmitted()).toBe(false);
+		});
 	});
 });

@@ -1,6 +1,7 @@
 import { Stream } from 'stream';
 import { DefaultBufferManager } from './default-buffer-manager';
 import { DefaultStreamStateManager } from './default-stream-state-manager';
+import { BufferOperationError, WriteAfterEndError } from './errors';
 import { BufferManager, StreamBlockifyConfig, StreamStateManager } from './types';
 
 export class StreamBlockify extends Stream {
@@ -21,20 +22,33 @@ export class StreamBlockify extends Stream {
 
 	public write(chunk: Buffer | string): boolean {
 		if (this._stateManager.isEnded()) {
-			throw new Error('StreamBlockify: write after end');
+			const error = new WriteAfterEndError();
+			this.emit('error', error);
+			throw error;
 		}
 
-		const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk));
-		if (buffer.length) {
-			this._bufferManager.addBuffer(buffer);
+		if (this._stateManager.isPaused()) {
+			this._stateManager.setNeedDrain(true);
+			return false;
 		}
 
-		if (this._bufferManager.getTotalLength() >= this._chunkSize) {
-			if (this._stateManager.isPaused()) {
-				this._stateManager.setNeedDrain(true);
-				return false;
+		try {
+			const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk));
+			if (buffer.length) {
+				this._bufferManager.addBuffer(buffer);
 			}
-			this._emitChunks();
+
+			if (this._bufferManager.getTotalLength() >= this._chunkSize) {
+				if (this._stateManager.isPaused()) {
+					this._stateManager.setNeedDrain(true);
+					return false;
+				}
+				this._emitChunks();
+			}
+		} catch (error) {
+			const bufferError = new BufferOperationError('write', (error as Error).message);
+			this.emit('error', bufferError);
+			throw bufferError;
 		}
 
 		return true;
@@ -47,6 +61,10 @@ export class StreamBlockify extends Stream {
 	public resume(): void {
 		this._stateManager.setPaused(false);
 		this._emitChunks();
+		if (this._stateManager.needsDrain()) {
+			this._stateManager.setNeedDrain(false);
+			this.emit('drain');
+		}
 	}
 
 	public end(chunk?: Buffer | string): void {
@@ -75,22 +93,31 @@ export class StreamBlockify extends Stream {
 			}
 			this._handleEvents();
 		} catch (error) {
-			this.emit('error', error);
+			const bufferError = new BufferOperationError('_emitChunks', (error as Error).message);
+			this.emit('error', bufferError);
 		} finally {
 			this._stateManager.setEmitting(false);
 		}
 	}
 
 	private _emitFullChunks(): void {
-		const chunks = this._bufferManager.getChunks(this._chunkSize);
-		chunks.forEach(chunk => this.emit('data', chunk));
+		try {
+			const chunks = this._bufferManager.getChunks(this._chunkSize);
+			chunks.forEach(chunk => this.emit('data', chunk));
+		} catch (error) {
+			throw new BufferOperationError('_emitFullChunks', (error as Error).message);
+		}
 	}
 
 	private emitRemainingData(): void {
-		const remaining = this._bufferManager.getRemainingData();
-		if (remaining) {
-			this.emit('data', remaining);
-			this._bufferManager.clear();
+		try {
+			const remaining = this._bufferManager.getRemainingData();
+			if (remaining) {
+				this.emit('data', remaining);
+				this._bufferManager.clear();
+			}
+		} catch (error) {
+			throw new BufferOperationError('emitRemainingData', (error as Error).message);
 		}
 	}
 
