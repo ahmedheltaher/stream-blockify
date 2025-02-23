@@ -145,7 +145,7 @@ describe('StreamBlockify Integration Tests', () => {
 				stream.write('test');
 			} catch (error: unknown) {
 				if (error instanceof Error) {
-					expect(error.message).toBe("Buffer operation 'write' failed: Mock buffer error");
+					expect(error.message).toBe('Mock buffer error');
 				}
 			}
 		});

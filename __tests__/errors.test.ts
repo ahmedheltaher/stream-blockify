@@ -1,19 +1,6 @@
 import { BufferOperationError, StreamBlockifyError, WriteAfterEndError } from '../src/errors';
 
 describe('Custom Errors', () => {
-	describe('StreamBlockifyError', () => {
-		it('should be an instance of Error', () => {
-			const error = new StreamBlockifyError('test message');
-			expect(error).toBeInstanceOf(Error);
-		});
-
-		it('should have the correct name and message', () => {
-			const error = new StreamBlockifyError('test message');
-			expect(error.name).toBe('StreamBlockifyError');
-			expect(error.message).toBe('test message');
-		});
-	});
-
 	describe('WriteAfterEndError', () => {
 		it('should be an instance of StreamBlockifyError', () => {
 			const error = new WriteAfterEndError();

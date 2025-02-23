@@ -49,12 +49,12 @@ describe('StreamBlockify', () => {
 	describe('constructor', () => {
 		it('should initialize with default values when no config provided', () => {
 			const defaultStream = new StreamBlockify();
-			expect(defaultStream['_chunkSize']).toBe(512);
+			expect(defaultStream['chunkSize']).toBe(512);
 		});
 
 		it('should initialize with custom size', () => {
 			const customStream = new StreamBlockify({ size: 1024 });
-			expect(customStream['_chunkSize']).toBe(1024);
+			expect(customStream['chunkSize']).toBe(1024);
 		});
 	});
 
@@ -169,7 +169,7 @@ describe('StreamBlockify', () => {
 
 			expect(errorEvents.length).toBe(1);
 			expect(errorEvents[0].message).toBe(
-				"Buffer operation '_emitChunks' failed: Buffer operation '_emitFullChunks' failed: Test error"
+				"Buffer operation 'emitChunks' failed: Buffer operation 'emitFullChunks' failed: Test error"
 			);
 			expect(mockStateManager.setEmitting).toHaveBeenCalledWith(false);
 		});

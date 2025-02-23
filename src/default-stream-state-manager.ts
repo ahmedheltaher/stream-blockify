@@ -1,7 +1,11 @@
-import { StreamBlockifyState, StreamStateManager } from './types';
+import { StreamState, StreamStateManager } from './types';
 
+/**
+ * Manages the state of a stream with type-safe operations
+ * Provides a clear interface for state transitions and queries
+ */
 export class DefaultStreamStateManager implements StreamStateManager {
-	private readonly _state: StreamBlockifyState = {
+	private state: StreamState = {
 		paused: false,
 		ended: false,
 		endEmitted: false,
@@ -9,43 +13,66 @@ export class DefaultStreamStateManager implements StreamStateManager {
 		needDrain: false
 	};
 
+	/**
+	 * State query methods
+	 */
 	public isPaused(): boolean {
-		return this._state.paused;
+		return this.state.paused;
 	}
 
 	public isEmitting(): boolean {
-		return this._state.emitting;
+		return this.state.emitting;
 	}
 
 	public isEnded(): boolean {
-		return this._state.ended;
+		return this.state.ended;
 	}
 
 	public isEndEmitted(): boolean {
-		return this._state.endEmitted;
+		return this.state.endEmitted;
 	}
 
 	public needsDrain(): boolean {
-		return this._state.needDrain;
+		return this.state.needDrain;
 	}
 
-	public setPaused(paused: boolean): void {
-		this._state.paused = paused;
+	/**
+	 * State mutation methods
+	 */
+	public setPaused(value: boolean): void {
+		this.updateState('paused', value);
 	}
 
-	public setEmitting(emitting: boolean): void {
-		this._state.emitting = emitting;
+	public setEmitting(value: boolean): void {
+		this.updateState('emitting', value);
 	}
 
-	public setEnded(ended: boolean): void {
-		this._state.ended = ended;
+	public setEnded(value: boolean): void {
+		this.updateState('ended', value);
 	}
 
-	public setEndEmitted(endEmitted: boolean): void {
-		this._state.endEmitted = endEmitted;
+	public setEndEmitted(value: boolean): void {
+		this.updateState('endEmitted', value);
 	}
 
-	public setNeedDrain(needDrain: boolean): void {
-		this._state.needDrain = needDrain;
+	public setNeedDrain(value: boolean): void {
+		this.updateState('needDrain', value);
+	}
+
+	/**
+	 * Returns a readonly copy of the current state
+	 */
+	public getState(): Readonly<StreamState> {
+		return { ...this.state };
+	}
+
+	/**
+	 * Updates a single state property in an immutable way
+	 */
+	private updateState<K extends keyof StreamState>(key: K, value: StreamState[K]): void {
+		this.state = {
+			...this.state,
+			[key]: value
+		};
 	}
 }
