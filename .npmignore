@@ -12,11 +12,13 @@ tsconfig.json
 tsconfig.jest.json
 jest.config.js
 coverage/
+typedoc.json
 
 # Documentation
 CONTRIBUTING.md
 CODE_OF_CONDUCT.md
 SECURITY.md
+docs/
 
 # Examples and tests
 example/

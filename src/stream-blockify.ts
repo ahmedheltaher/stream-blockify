@@ -9,17 +9,31 @@ import { BufferManager, StreamBlockifyConfig, StreamStateManager } from './types
  * It buffers incoming data and emits chunks of a specified size.
  */
 export class StreamBlockify extends Stream {
-	// Make these readonly since they shouldn't change after initialization
+	/**
+	 * Default chunk size if not specified in the configuration.
+	 */
 	private readonly DEFAULT_CHUNK_SIZE = 512;
+
+	/**
+	 * Size of each chunk to be emitted.
+	 */
 	private readonly chunkSize: number;
+
+	/**
+	 * Manager for handling buffer operations.
+	 */
 	private readonly bufferManager: BufferManager;
+
+	/**
+	 * Manager for handling stream state.
+	 */
 	private readonly stateManager: StreamStateManager;
 
 	/**
-	 * Creates a new StreamBlockify instance
-	 * @param config - Configuration options including chunk size
-	 * @param bufferManager - Optional custom buffer manager
-	 * @param stateManager - Optional custom state manager
+	 * Creates a new StreamBlockify instance.
+	 * @param config - Configuration options including chunk size.
+	 * @param bufferManager - Optional custom buffer manager.
+	 * @param stateManager - Optional custom state manager.
 	 */
 	constructor(config: StreamBlockifyConfig = {}, bufferManager?: BufferManager, stateManager?: StreamStateManager) {
 		super();
@@ -29,11 +43,11 @@ export class StreamBlockify extends Stream {
 	}
 
 	/**
-	 * Writes data to the stream
-	 * @param chunk - Data to write
-	 * @returns boolean indicating if more data can be written
-	 * @throws {WriteAfterEndError} If writing after stream has ended
-	 * @throws {BufferOperationError} If buffer operations fail
+	 * Writes data to the stream.
+	 * @param chunk - Data to write.
+	 * @returns boolean indicating if more data can be written.
+	 * @throws {WriteAfterEndError} If writing after stream has ended.
+	 * @throws {BufferOperationError} If buffer operations fail.
 	 */
 	public write(chunk: Buffer | string): boolean {
 		this.validateWriteOperation();
@@ -51,10 +65,16 @@ export class StreamBlockify extends Stream {
 		}
 	}
 
+	/**
+	 * Pauses the stream, preventing further data from being emitted.
+	 */
 	public pause(): void {
 		this.stateManager.setPaused(true);
 	}
 
+	/**
+	 * Resumes the stream, allowing data to be emitted.
+	 */
 	public resume(): void {
 		this.stateManager.setPaused(false);
 		this.emitChunks();
@@ -62,8 +82,8 @@ export class StreamBlockify extends Stream {
 	}
 
 	/**
-	 * Ends the stream and flushes remaining data
-	 * @param chunk - Optional final chunk to write before ending
+	 * Ends the stream and flushes remaining data.
+	 * @param chunk - Optional final chunk to write before ending.
 	 */
 	public end(chunk?: Buffer | string): void {
 		if (chunk) {
@@ -74,12 +94,16 @@ export class StreamBlockify extends Stream {
 	}
 
 	/**
-	 * Flushes any remaining data in the buffer
+	 * Flushes any remaining data in the buffer.
 	 */
 	public flush(): void {
 		this.emitChunks(true);
 	}
 
+	/**
+	 * Validates if a write operation can be performed.
+	 * @throws {WriteAfterEndError} If the stream has already ended.
+	 */
 	private validateWriteOperation(): void {
 		if (this.stateManager.isEnded()) {
 			const error = new WriteAfterEndError();
@@ -88,6 +112,11 @@ export class StreamBlockify extends Stream {
 		}
 	}
 
+	/**
+	 * Processes a chunk of data, adding it to the buffer and emitting chunks if necessary.
+	 * @param chunk - Data to process.
+	 * @throws {BufferOperationError} If buffer operations fail.
+	 */
 	private processChunk(chunk: Buffer | string): void {
 		const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk));
 		if (buffer.length) {
@@ -103,6 +132,11 @@ export class StreamBlockify extends Stream {
 		}
 	}
 
+	/**
+	 * Emits chunks of data from the buffer.
+	 * @param needToFlush - Whether to flush remaining data.
+	 * @throws {BufferOperationError} If buffer operations fail.
+	 */
 	private emitChunks(needToFlush: boolean = false): void {
 		if (this.shouldSkipEmission()) {
 			return;
@@ -122,10 +156,18 @@ export class StreamBlockify extends Stream {
 		}
 	}
 
+	/**
+	 * Determines if chunk emission should be skipped.
+	 * @returns boolean indicating if emission should be skipped.
+	 */
 	private shouldSkipEmission(): boolean {
 		return this.stateManager.isEmitting() || this.stateManager.isPaused();
 	}
 
+	/**
+	 * Emits full chunks of data from the buffer.
+	 * @throws {BufferOperationError} If buffer operations fail.
+	 */
 	private emitFullChunks(): void {
 		try {
 			const chunks = this.bufferManager.getChunks(this.chunkSize);
@@ -135,6 +177,10 @@ export class StreamBlockify extends Stream {
 		}
 	}
 
+	/**
+	 * Emits any remaining data in the buffer.
+	 * @throws {BufferOperationError} If buffer operations fail.
+	 */
 	private emitRemainingData(): void {
 		try {
 			const remaining = this.bufferManager.getRemainingData();
@@ -147,11 +193,17 @@ export class StreamBlockify extends Stream {
 		}
 	}
 
+	/**
+	 * Handles stream events such as 'drain' and 'end'.
+	 */
 	private handleStreamEvents(): void {
 		this.emitDrainIfNeeded();
 		this.emitEndIfNeeded();
 	}
 
+	/**
+	 * Emits a 'drain' event if needed.
+	 */
 	private emitDrainIfNeeded(): void {
 		if (this.stateManager.needsDrain()) {
 			this.stateManager.setNeedDrain(false);
@@ -159,6 +211,9 @@ export class StreamBlockify extends Stream {
 		}
 	}
 
+	/**
+	 * Emits an 'end' event if the stream has ended and all data has been emitted.
+	 */
 	private emitEndIfNeeded(): void {
 		if (this.isStreamEnded()) {
 			this.stateManager.setEndEmitted(true);
@@ -166,6 +221,10 @@ export class StreamBlockify extends Stream {
 		}
 	}
 
+	/**
+	 * Checks if the stream has ended and all data has been emitted.
+	 * @returns boolean indicating if the stream has ended.
+	 */
 	private isStreamEnded(): boolean {
 		return (
 			this.bufferManager.getTotalLength() === 0 &&
@@ -174,6 +233,11 @@ export class StreamBlockify extends Stream {
 		);
 	}
 
+	/**
+	 * Handles buffer operation errors by emitting an 'error' event.
+	 * @param operation - The operation during which the error occurred.
+	 * @param error - The error that occurred.
+	 */
 	private handleBufferError(operation: string, error: Error): void {
 		const bufferError = new BufferOperationError(operation, error.message);
 		this.emit('error', bufferError);

@@ -15,7 +15,8 @@
 		"test": "jest",
 		"test:watch": "jest --watch",
 		"test:coverage": "jest --coverage",
-		"prepublish": "npm run clean && npm run build"
+		"prepublish": "npm run clean && npm run build",
+		"docs": "typedoc"
 	},
 	"keywords": [
 		"nodejs",
@@ -47,6 +48,7 @@
 		"prettier": "^3.5.1",
 		"ts-jest": "^29.2.5",
 		"ts-node": "^10.9.2",
+		"typedoc": "^0.27.8",
 		"typescript": "^5.7.3"
 	}
 }

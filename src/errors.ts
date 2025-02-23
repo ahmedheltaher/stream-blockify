@@ -1,12 +1,12 @@
 /**
- * Base error class for all StreamBlockify errors
- * Ensures proper prototype chain and error properties
+ * Base error class for all StreamBlockify errors.
+ * Ensures proper prototype chain and error properties.
  */
 export abstract class StreamBlockifyError extends Error {
 	/**
-	 * Creates a new StreamBlockify error
-	 * @param message - Error message
-	 * @param options - Optional error cause and other properties
+	 * Creates a new StreamBlockify error.
+	 * @param message - The error message.
+	 * @param options - Optional error cause and other properties.
 	 */
 	protected constructor(message: string, options: ErrorOptions = {}) {
 		super(message, options);
@@ -23,7 +23,10 @@ export abstract class StreamBlockifyError extends Error {
 	}
 
 	/**
-	 * Creates a formatted error message with optional details
+	 * Creates a formatted error message with optional details.
+	 * @param message - The main error message.
+	 * @param details - Additional details to include in the error message.
+	 * @returns The formatted error message.
 	 */
 	protected static formatMessage(message: string, details?: string): string {
 		return details ? `${message}: ${details}` : message;
@@ -31,28 +34,32 @@ export abstract class StreamBlockifyError extends Error {
 }
 
 /**
- * Error thrown when attempting to write to a stream after it has ended
+ * Error thrown when attempting to write to a stream after it has ended.
  */
 export class WriteAfterEndError extends StreamBlockifyError {
 	private static readonly DEFAULT_MESSAGE = 'Cannot write after end has been called';
 
+	/**
+	 * Creates a new WriteAfterEndError.
+	 * @param options - Optional error cause and other properties.
+	 */
 	constructor(options: ErrorOptions = {}) {
 		super(WriteAfterEndError.DEFAULT_MESSAGE, options);
 	}
 }
 
 /**
- * Error thrown when a buffer operation fails
+ * Error thrown when a buffer operation fails.
  */
 export class BufferOperationError extends StreamBlockifyError {
 	public readonly operation: string;
 	public readonly details: string;
 
 	/**
-	 * Creates a new BufferOperationError
-	 * @param operation - Name of the failed operation
-	 * @param details - Additional error details
-	 * @param options - Optional error cause and other properties
+	 * Creates a new BufferOperationError.
+	 * @param operation - Name of the failed operation.
+	 * @param details - Additional error details.
+	 * @param options - Optional error cause and other properties.
 	 */
 	constructor(operation: string, details: string, options: ErrorOptions = {}) {
 		const message = BufferOperationError.formatBufferErrorMessage(operation, details);
@@ -63,14 +70,18 @@ export class BufferOperationError extends StreamBlockifyError {
 	}
 
 	/**
-	 * Formats the buffer operation error message
+	 * Formats the buffer operation error message.
+	 * @param operation - Name of the failed operation.
+	 * @param details - Additional error details.
+	 * @returns The formatted buffer operation error message.
 	 */
 	private static formatBufferErrorMessage(operation: string, details: string): string {
 		return StreamBlockifyError.formatMessage(`Buffer operation '${operation}' failed`, details);
 	}
 
 	/**
-	 * Creates a JSON representation of the error
+	 * Creates a JSON representation of the error.
+	 * @returns A JSON object representing the error.
 	 */
 	public toJSON(): Record<string, unknown> {
 		return {
@@ -84,14 +95,19 @@ export class BufferOperationError extends StreamBlockifyError {
 }
 
 /**
- * Type guard to check if an error is a StreamBlockifyError
+ * Type guard to check if an error is a StreamBlockifyError.
+ * @param error - The error to check.
+ * @returns True if the error is a StreamBlockifyError, false otherwise.
  */
 export function isStreamBlockifyError(error: unknown): error is StreamBlockifyError {
 	return error instanceof StreamBlockifyError;
 }
 
 /**
- * Type guard to check if an error is a specific type of StreamBlockifyError
+ * Type guard to check if an error is a specific type of StreamBlockifyError.
+ * @param error - The error to check.
+ * @param errorType - The specific StreamBlockifyError type to check against.
+ * @returns True if the error is of the specified type, false otherwise.
  */
 export function isSpecificStreamError<T extends StreamBlockifyError>(
 	error: unknown,
