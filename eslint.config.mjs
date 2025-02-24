@@ -40,7 +40,19 @@ export default [
 				}
 			],
 
-			'object-curly-spacing': ['error', 'always', { objectsInObjects: false }]
+			'object-curly-spacing': ['error', 'always', { objectsInObjects: false }],
+			'@typescript-eslint/no-unused-vars': [
+				'error',
+				{
+					args: 'all',
+					argsIgnorePattern: '^_',
+					caughtErrors: 'all',
+					caughtErrorsIgnorePattern: '^_',
+					destructuredArrayIgnorePattern: '^_',
+					varsIgnorePattern: '^_',
+					ignoreRestSiblings: true
+				}
+			]
 		}
 	}
 ];

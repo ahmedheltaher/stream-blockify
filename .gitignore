@@ -129,4 +129,5 @@ dist
 .yarn/install-state.gz
 .pnp.*
 
-docs/
+type-docs/
+__examples__/basic-file-chunking/output.txt

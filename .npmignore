@@ -22,6 +22,7 @@ docs/
 
 # Examples and tests
 example/
+__examples__
 __tests__/
 *.test.ts
 *.spec.ts

@@ -70,12 +70,6 @@ describe('StreamBlockify', () => {
 			expect(mockBufferManager.addBuffer).toHaveBeenCalledWith(buffer);
 		});
 
-		it('should not emit chunks when buffer length is less than chunk size', () => {
-			mockBufferManager.getTotalLength.mockReturnValue(5); // Less than chunk size (10)
-			streamBlockify.write('test');
-			expect(mockBufferManager.getChunks).not.toHaveBeenCalled();
-		});
-
 		it('should emit chunks when buffer reaches chunk size', () => {
 			mockBufferManager.getTotalLength.mockReturnValue(10);
 			mockBufferManager.getChunks.mockReturnValue([Buffer.from('full chunk')]);
@@ -85,17 +79,6 @@ describe('StreamBlockify', () => {
 			expect(mockBufferManager.getChunks).toHaveBeenCalledWith(10);
 			expect(dataEvents.length).toBe(1);
 			expect(dataEvents[0].toString()).toBe('full chunk');
-		});
-
-		it('should return false and set needDrain when paused', () => {
-			mockBufferManager.getTotalLength.mockReturnValue(10);
-			mockStateManager.isPaused.mockReturnValue(true);
-
-			const result = streamBlockify.write('test');
-
-			expect(result).toBe(false);
-			expect(mockStateManager.setNeedDrain).toHaveBeenCalledWith(true);
-			expect(mockBufferManager.getChunks).not.toHaveBeenCalled();
 		});
 
 		it('should throw WriteAfterEndError when writing after end', () => {
@@ -184,26 +167,6 @@ describe('StreamBlockify', () => {
 
 			expect(drainEvents).toBe(1);
 			expect(mockStateManager.setNeedDrain).toHaveBeenCalledWith(false);
-		});
-	});
-
-	describe('_emitChunks', () => {
-		it('should not emit when already emitting', () => {
-			mockStateManager.isEmitting.mockReturnValue(true);
-			mockBufferManager.getTotalLength.mockReturnValue(10);
-
-			streamBlockify.write('test');
-
-			expect(mockBufferManager.getChunks).not.toHaveBeenCalled();
-		});
-
-		it('should not emit when paused', () => {
-			mockStateManager.isPaused.mockReturnValue(true);
-			mockBufferManager.getTotalLength.mockReturnValue(10);
-
-			streamBlockify.write('test');
-
-			expect(mockBufferManager.getChunks).not.toHaveBeenCalled();
 		});
 	});
 

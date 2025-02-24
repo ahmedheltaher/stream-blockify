@@ -1,4 +1,4 @@
-import { Stream } from 'stream';
+import { Duplex } from 'stream';
 import { DefaultBufferManager } from './default-buffer-manager';
 import { DefaultStreamStateManager } from './default-stream-state-manager';
 import { BufferOperationError, WriteAfterEndError } from './errors';
@@ -8,7 +8,7 @@ import { BufferManager, StreamBlockifyConfig, StreamStateManager } from './types
  * StreamBlockify transforms incoming data into fixed-size chunks.
  * It buffers incoming data and emits chunks of a specified size.
  */
-export class StreamBlockify extends Stream {
+export class StreamBlockify extends Duplex {
 	/**
 	 * Default chunk size if not specified in the configuration.
 	 */
@@ -68,29 +68,37 @@ export class StreamBlockify extends Stream {
 	/**
 	 * Pauses the stream, preventing further data from being emitted.
 	 */
-	public pause(): void {
+	public pause(): this {
 		this.stateManager.setPaused(true);
+		return this;
 	}
 
 	/**
 	 * Resumes the stream, allowing data to be emitted.
 	 */
-	public resume(): void {
+	public resume(): this {
 		this.stateManager.setPaused(false);
 		this.emitChunks();
 		this.emitDrainIfNeeded();
+		return this;
 	}
 
 	/**
 	 * Ends the stream and flushes remaining data.
 	 * @param chunk - Optional final chunk to write before ending.
 	 */
-	public end(chunk?: Buffer | string): void {
+	public end(chunk?: any, encoding?: BufferEncoding | (() => void), callback?: () => void): this {
+		if (typeof encoding === 'function') {
+			callback = encoding;
+			encoding = undefined;
+		}
 		if (chunk) {
 			this.write(chunk);
 		}
 		this.stateManager.setEnded(true);
 		this.flush();
+		if (callback) callback();
+		return this;
 	}
 
 	/**
@@ -105,11 +113,12 @@ export class StreamBlockify extends Stream {
 	 * @throws {WriteAfterEndError} If the stream has already ended.
 	 */
 	private validateWriteOperation(): void {
-		if (this.stateManager.isEnded()) {
-			const error = new WriteAfterEndError();
-			this.emit('error', error);
-			throw error;
+		if (!this.stateManager.isEnded()) {
+			return;
 		}
+		const error = new WriteAfterEndError();
+		this.emit('error', error);
+		throw error;
 	}
 
 	/**
