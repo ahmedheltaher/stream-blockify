@@ -49,6 +49,38 @@ export class WriteAfterEndError extends StreamBlockifyError {
 }
 
 /**
+ * Error thrown when input validation fails.
+ */
+export class ValidationError extends StreamBlockifyError {
+	public readonly field: string;
+	public readonly details: string;
+
+	/**
+	 * Creates a new ValidationError.
+	 * @param field - The field that failed validation.
+	 * @param details - Information about the validation failure.
+	 * @param options - Optional error cause and other properties.
+	 */
+	constructor(field: string, details: string, options: ErrorOptions = {}) {
+		const message = ValidationError.formatValidationErrorMessage(field, details);
+		super(message, options);
+
+		this.field = field;
+		this.details = details;
+	}
+
+	/**
+	 * Formats the validation error message.
+	 * @param field - The field that failed validation.
+	 * @param details - Information about the validation failure.
+	 * @returns The formatted validation error message.
+	 */
+	private static formatValidationErrorMessage(field: string, details: string): string {
+		return StreamBlockifyError.formatMessage(`Validation failed for '${field}'`, details);
+	}
+}
+
+/**
  * Error thrown when a buffer operation fails.
  */
 export class BufferOperationError extends StreamBlockifyError {
@@ -91,6 +123,28 @@ export class BufferOperationError extends StreamBlockifyError {
 			details: this.details,
 			stack: this.stack
 		};
+	}
+}
+
+/**
+ * Error thrown when the stream exceeds its buffer capacity.
+ */
+export class BufferOverflowError extends StreamBlockifyError {
+	public readonly currentSize: number;
+	public readonly maxSize: number;
+
+	/**
+	 * Creates a new BufferOverflowError.
+	 * @param currentSize - Current buffer size.
+	 * @param maxSize - Maximum allowed buffer size.
+	 * @param options - Optional error cause and other properties.
+	 */
+	constructor(currentSize: number, maxSize: number, options: ErrorOptions = {}) {
+		const message = `Buffer overflow: Size ${currentSize} exceeds maximum ${maxSize} bytes`;
+		super(message, options);
+
+		this.currentSize = currentSize;
+		this.maxSize = maxSize;
 	}
 }
 

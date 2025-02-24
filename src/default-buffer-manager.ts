@@ -1,13 +1,9 @@
+import { BufferOperationError } from './errors';
 import { BufferManager } from './types';
 
 /**
  * DefaultBufferManager implements buffer management for streaming data
  * Handles buffer concatenation, chunking, and remaining data management
- */
-/**
- * DefaultBufferManager is a class that manages a collection of buffers,
- * allowing for the addition of new buffers, retrieval of total length,
- * creation of fixed-size chunks, and retrieval of remaining data.
  */
 export class DefaultBufferManager implements BufferManager {
 	/**
@@ -26,12 +22,50 @@ export class DefaultBufferManager implements BufferManager {
 	private currentOffset = 0;
 
 	/**
+	 * Memory pool for frequent buffer operations
+	 */
+	private readonly bufferPool: {
+		buffer: Buffer | null;
+		size: number;
+	} = {
+		buffer: null,
+		size: 0
+	};
+
+	/**
+	 * Maximum number of buffers to store before consolidation
+	 */
+	private readonly MAX_BUFFER_COUNT = 1000;
+
+	/**
+	 * Creates a new DefaultBufferManager instance
+	 * @param options - Configuration options
+	 */
+	constructor(options: { poolSize?: number } = {}) {
+		// Initialize buffer pool if requested
+		if (options.poolSize && options.poolSize > 0) {
+			this.bufferPool.buffer = Buffer.allocUnsafe(options.poolSize);
+			this.bufferPool.size = options.poolSize;
+		}
+	}
+
+	/**
 	 * Adds a new buffer to the internal buffer collection.
+	 * Auto-consolidates buffers if they exceed MAX_BUFFER_COUNT.
 	 * @param buffer - The buffer to add.
 	 */
 	public addBuffer(buffer: Buffer): void {
+		if (!buffer || buffer.length === 0) {
+			return; // Skip empty buffers
+		}
+
 		this.buffers.push(buffer);
 		this.totalLength += buffer.length;
+
+		// Consolidate buffers if we have too many to prevent memory fragmentation
+		if (this.buffers.length > this.MAX_BUFFER_COUNT) {
+			this.consolidateBuffers();
+		}
 	}
 
 	/**
@@ -46,8 +80,13 @@ export class DefaultBufferManager implements BufferManager {
 	 * Creates fixed-size chunks from the buffered data.
 	 * @param chunkSize - Size of each chunk to create.
 	 * @returns Array of buffer chunks.
+	 * @throws {BufferOperationError} If chunk creation fails due to invalid size.
 	 */
 	public getChunks(chunkSize: number): Buffer[] {
+		if (chunkSize <= 0) {
+			throw new BufferOperationError('getChunks', `Invalid chunk size: ${chunkSize}. Must be greater than 0.`);
+		}
+
 		if (!this.isValidChunkOperation(chunkSize)) {
 			return [];
 		}
@@ -80,7 +119,57 @@ export class DefaultBufferManager implements BufferManager {
 			return null;
 		}
 
-		return this.buffers.length === 1 ? this.getSingleBufferRemaining() : this.getMultiBufferRemaining();
+		// Optimize for single buffer case
+		if (this.buffers.length === 1) {
+			return this.getSingleBufferRemaining();
+		}
+
+		// For multiple buffers, consolidate them first for efficiency
+		this.consolidateBuffers();
+		return this.getSingleBufferRemaining();
+	}
+
+	/**
+	 * Consolidates multiple buffers into a single buffer to reduce fragmentation
+	 * and improve performance of subsequent operations.
+	 */
+	private consolidateBuffers(): void {
+		if (this.buffers.length <= 1) {
+			return; // Nothing to consolidate
+		}
+
+		try {
+			// Use our pool if available and big enough
+			const shouldUsePool = this.bufferPool.buffer && this.totalLength <= this.bufferPool.size;
+
+			const result: Buffer = shouldUsePool ? this.bufferPool.buffer! : Buffer.allocUnsafe(this.totalLength);
+
+			let offset = 0;
+
+			// Copy first buffer considering the current offset
+			const firstBuffer = this.buffers[0];
+			const lengthToCopy = firstBuffer.length - this.currentOffset;
+			firstBuffer.copy(result, 0, this.currentOffset);
+			offset += lengthToCopy;
+
+			// Copy remaining buffers
+			for (let i = 1; i < this.buffers.length; i++) {
+				const buffer = this.buffers[i];
+				buffer.copy(result, offset);
+				offset += buffer.length;
+			}
+
+			// Replace all buffers with this single consolidated buffer
+			this.buffers.length = 0;
+
+			// If we used the pool buffer, create a slice (view) of it
+			const consolidatedBuffer = shouldUsePool ? result.slice(0, this.totalLength) : result;
+
+			this.buffers.push(consolidatedBuffer);
+			this.currentOffset = 0;
+		} catch (error) {
+			throw new BufferOperationError('consolidateBuffers', (error as Error).message);
+		}
 	}
 
 	/**
@@ -111,27 +200,8 @@ export class DefaultBufferManager implements BufferManager {
 	}
 
 	/**
-	 * Retrieves the remaining data from multiple buffers.
-	 * @returns Buffer containing the remaining data.
-	 */
-	private getMultiBufferRemaining(): Buffer {
-		const result = Buffer.alloc(this.totalLength);
-		let outputOffset = 0;
-
-		for (let i = 0; i < this.buffers.length; i++) {
-			const buffer = this.buffers[i];
-			const start = i === 0 ? this.currentOffset : 0;
-			const length = buffer.length - start;
-
-			buffer.copy(result, outputOffset, start);
-			outputOffset += length;
-		}
-
-		return result;
-	}
-
-	/**
 	 * Creates a chunk of the specified size from the buffered data.
+	 * Uses optimized buffer copying strategies for better performance.
 	 * @param size - The size of the chunk to create.
 	 * @returns The created chunk or null if there is not enough data.
 	 */
@@ -140,7 +210,8 @@ export class DefaultBufferManager implements BufferManager {
 			return null;
 		}
 
-		const chunk = Buffer.alloc(size);
+		// Use Buffer.allocUnsafe for performance since we'll immediately fill the entire buffer
+		const chunk = Buffer.allocUnsafe(size);
 		let chunkOffset = 0;
 		let remainingSize = size;
 
@@ -159,6 +230,7 @@ export class DefaultBufferManager implements BufferManager {
 
 	/**
 	 * Copies data to the chunk from the current buffer.
+	 * Optimized for performance with direct Buffer methods.
 	 * @param chunk - The chunk to copy data to.
 	 * @param chunkOffset - The current offset within the chunk.
 	 * @param remainingSize - The remaining size to be copied.

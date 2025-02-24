@@ -14,7 +14,9 @@
  * @example
  * ```typescript
  * const config: StreamBlockifyConfig = {
- *   size: 1024 // Create 1KB chunks
+ *   size: 1024, // Create 1KB chunks
+ *   maxBufferSize: 1024 * 100, // Maximum buffer size of 100KB
+ *   flushMode: 'complete' // Only emit complete chunks unless end() is called
  * };
  * const blockifier = new StreamBlockify(config);
  * ```
@@ -31,6 +33,60 @@ export interface StreamBlockifyConfig {
 	 * - Smaller sizes provide finer control but may impact performance
 	 */
 	readonly size?: number;
+
+	/**
+	 * Maximum size of the internal buffer in bytes.
+	 * When this limit is reached, backpressure is applied.
+	 *
+	 * @default size * 100
+	 * @remarks
+	 * - Prevents unbounded memory growth
+	 * - Should be set based on available system memory and expected throughput
+	 */
+	readonly maxBufferSize?: number;
+
+	/**
+	 * Determines how the stream handles incomplete chunks when flushing.
+	 *
+	 * @default 'auto'
+	 */
+	readonly flushMode?: 'auto' | 'complete' | 'partial';
+}
+
+/**
+ * Metrics for monitoring stream processing performance and state.
+ *
+ * @interface StreamMetrics
+ * @category Monitoring
+ *
+ * @example
+ * ```typescript
+ * const stream = new StreamBlockify();
+ * // ... process some data ...
+ * const metrics = stream.getMetrics();
+ * console.log(`Processed ${metrics.totalChunksProcessed} chunks`);
+ * ```
+ */
+export interface StreamMetrics {
+	/**
+	 * Total number of chunks processed by the stream.
+	 */
+	totalChunksProcessed: number;
+
+	/**
+	 * Total number of bytes processed by the stream.
+	 */
+	totalBytesProcessed: number;
+
+	/**
+	 * Current size of the internal buffer in bytes.
+	 */
+	currentBufferSize: number;
+
+	/**
+	 * Last time the stream processed data in milliseconds.
+	 */
+	lastProcessingTime: number;
 }
 
 /**
