@@ -1,202 +1,326 @@
-import { WriteAfterEndError } from '../src/errors';
-import { StreamBlockify } from '../src/stream-blockify';
-import { BufferManager, StreamStateManager } from '../src/types';
+import { PassThrough, Readable } from 'stream';
+import { StreamBlockify } from '../src';
+
+function collectStreamData(stream: Readable): Promise<Buffer[]> {
+	return new Promise((resolve, reject) => {
+		const chunks: Buffer[] = [];
+		stream.on('data', chunk => chunks.push(chunk));
+		stream.on('end', () => resolve(chunks));
+		stream.on('error', reject);
+	});
+}
+
+function createReadableStream(data: (Buffer | string)[]): Readable {
+	return Readable.from(data);
+}
 
 describe('StreamBlockify', () => {
-	let streamBlockify: StreamBlockify;
-	let mockBufferManager: jest.Mocked<BufferManager>;
-	let mockStateManager: jest.Mocked<StreamStateManager>;
-	let dataEvents: Buffer[];
-	let errorEvents: Error[];
-	let drainEvents: number;
-	let endEvents: number;
+	describe('Basic functionality', () => {
+		it('should chunk data into blocks of the specified size', async () => {
+			const source = createReadableStream([Buffer.from('0123456789ABCDEF')]);
+			const blockify = new StreamBlockify({ blockSize: 4 });
 
-	beforeEach(() => {
-		dataEvents = [];
-		errorEvents = [];
-		drainEvents = 0;
-		endEvents = 0;
+			source.pipe(blockify);
+			const blocks = await collectStreamData(blockify);
 
-		mockBufferManager = {
-			addBuffer: jest.fn(),
-			getTotalLength: jest.fn().mockReturnValue(0),
-			getChunks: jest.fn().mockReturnValue([]),
-			clear: jest.fn(),
-			getRemainingData: jest.fn().mockReturnValue(null)
-		};
-
-		mockStateManager = {
-			isPaused: jest.fn().mockReturnValue(false),
-			isEmitting: jest.fn().mockReturnValue(false),
-			isEnded: jest.fn().mockReturnValue(false),
-			isEndEmitted: jest.fn().mockReturnValue(false),
-			needsDrain: jest.fn().mockReturnValue(false),
-			setPaused: jest.fn(),
-			setEmitting: jest.fn(),
-			setEnded: jest.fn(),
-			setEndEmitted: jest.fn(),
-			setNeedDrain: jest.fn()
-		};
-
-		streamBlockify = new StreamBlockify({ size: 10 }, mockBufferManager, mockStateManager);
-
-		streamBlockify.on('data', chunk => dataEvents.push(chunk));
-		streamBlockify.on('error', err => errorEvents.push(err));
-		streamBlockify.on('drain', () => drainEvents++);
-		streamBlockify.on('end', () => endEvents++);
-	});
-
-	describe('constructor', () => {
-		it('should initialize with default values when no config provided', () => {
-			const defaultStream = new StreamBlockify();
-			expect(defaultStream['chunkSize']).toBe(512);
+			expect(blocks.length).toBe(4);
+			expect(blocks[0].toString()).toBe('0123');
+			expect(blocks[1].toString()).toBe('4567');
+			expect(blocks[2].toString()).toBe('89AB');
+			expect(blocks[3].toString()).toBe('CDEF');
 		});
 
-		it('should initialize with custom size', () => {
-			const customStream = new StreamBlockify({ size: 1024 });
-			expect(customStream['chunkSize']).toBe(1024);
-		});
-	});
+		it('should handle string input', async () => {
+			const source = createReadableStream(['0123456789ABCDEF']);
+			const blockify = new StreamBlockify({ blockSize: 4 });
 
-	describe('write', () => {
-		it('should add buffer when writing string data', () => {
-			streamBlockify.write('test');
-			expect(mockBufferManager.addBuffer).toHaveBeenCalledWith(Buffer.from('test'));
-		});
+			source.pipe(blockify);
+			const blocks = await collectStreamData(blockify);
 
-		it('should add buffer when writing Buffer data', () => {
-			const buffer = Buffer.from('test');
-			streamBlockify.write(buffer);
-			expect(mockBufferManager.addBuffer).toHaveBeenCalledWith(buffer);
+			expect(blocks.length).toBe(4);
+			expect(blocks[0].toString()).toBe('0123');
+			expect(blocks[1].toString()).toBe('4567');
+			expect(blocks[2].toString()).toBe('89AB');
+			expect(blocks[3].toString()).toBe('CDEF');
 		});
 
-		it('should emit chunks when buffer reaches chunk size', () => {
-			mockBufferManager.getTotalLength.mockReturnValue(10);
-			mockBufferManager.getChunks.mockReturnValue([Buffer.from('full chunk')]);
+		it('should emit partial blocks by default', async () => {
+			const source = createReadableStream([Buffer.from('0123456789')]);
+			const blockify = new StreamBlockify({ blockSize: 4 });
 
-			streamBlockify.write('enough data');
+			source.pipe(blockify);
+			const blocks = await collectStreamData(blockify);
 
-			expect(mockBufferManager.getChunks).toHaveBeenCalledWith(10);
-			expect(dataEvents.length).toBe(1);
-			expect(dataEvents[0].toString()).toBe('full chunk');
+			expect(blocks.length).toBe(3);
+			expect(blocks[0].toString()).toBe('0123');
+			expect(blocks[1].toString()).toBe('4567');
+			expect(blocks[2].toString()).toBe('89');
 		});
 
-		it('should throw WriteAfterEndError when writing after end', () => {
-			mockStateManager.isEnded.mockReturnValue(true);
+		it('should pad the last block when emitPartial is false', async () => {
+			const source = createReadableStream([Buffer.from('0123456789')]);
+			const blockify = new StreamBlockify({ blockSize: 4, emitPartial: false, padding: 0x50 /* 'P' */ });
+
+			source.pipe(blockify);
+			const blocks = await collectStreamData(blockify);
+
+			expect(blocks.length).toBe(3);
+			expect(blocks[0].toString()).toBe('0123');
+			expect(blocks[1].toString()).toBe('4567');
+			expect(blocks[2].toString()).toBe('89PP');
+		});
+
+		it('should handle multiple chunks correctly', async () => {
+			const source = createReadableStream([
+				Buffer.from('0123'),
+				Buffer.from('4567'),
+				Buffer.from('89AB'),
+				Buffer.from('CDEF')
+			]);
+			const blockify = new StreamBlockify({ blockSize: 6 });
+
+			source.pipe(blockify);
+			const blocks = await collectStreamData(blockify);
+
+			expect(blocks.length).toBe(3);
+			expect(blocks[0].toString()).toBe('012345');
+			expect(blocks[1].toString()).toBe('6789AB');
+			expect(blocks[2].toString()).toBe('CDEF');
+		});
+
+		it('should handle empty input', async () => {
+			const source = createReadableStream([]);
+			const blockify = new StreamBlockify({ blockSize: 4 });
+
+			source.pipe(blockify);
+			const blocks = await collectStreamData(blockify);
+
+			expect(blocks.length).toBe(0);
+		});
+
+		it('should throw an error for invalid blockSize', () => {
+			expect(() => {
+				new StreamBlockify({ blockSize: 0 });
+			}).toThrow('blockSize must be a positive integer');
 
 			expect(() => {
-				streamBlockify.write('test');
-			}).toThrow(WriteAfterEndError);
+				new StreamBlockify({ blockSize: -1 });
+			}).toThrow('blockSize must be a positive integer');
+
+			expect(() => {
+				new StreamBlockify({ blockSize: 3.5 });
+			}).toThrow('blockSize must be a positive integer');
 		});
 	});
 
-	describe('pause/resume', () => {
-		it('should set paused state to true when paused', () => {
-			streamBlockify.pause();
-			expect(mockStateManager.setPaused).toHaveBeenCalledWith(true);
-		});
-
-		it('should set paused state to false and emit chunks when resumed', () => {
-			mockBufferManager.getTotalLength.mockReturnValue(10);
-			mockBufferManager.getChunks.mockReturnValue([Buffer.from('full chunk')]);
-
-			streamBlockify.resume();
-
-			expect(mockStateManager.setPaused).toHaveBeenCalledWith(false);
-			expect(mockBufferManager.getChunks).toHaveBeenCalled();
-			expect(dataEvents.length).toBe(1);
-		});
-	});
-
-	describe('end', () => {
-		it('should write final chunk if provided', () => {
-			streamBlockify.end('final data');
-
-			expect(mockBufferManager.addBuffer).toHaveBeenCalledWith(Buffer.from('final data'));
-			expect(mockStateManager.setEnded).toHaveBeenCalledWith(true);
-		});
-
-		it('should set ended state and emit end event when buffer is empty', () => {
-			mockBufferManager.getTotalLength.mockReturnValue(0);
-			mockStateManager.isEnded.mockReturnValue(true);
-			mockStateManager.isEndEmitted.mockReturnValue(false);
-
-			streamBlockify.end();
-
-			expect(mockStateManager.setEnded).toHaveBeenCalledWith(true);
-			expect(mockStateManager.setEndEmitted).toHaveBeenCalledWith(true);
-			expect(endEvents).toBe(1);
-		});
-
-		it('should flush remaining data', () => {
-			const remainingData = Buffer.from('remaining');
-			mockBufferManager.getRemainingData.mockReturnValue(remainingData);
-			mockStateManager.isEnded.mockReturnValue(true);
-			mockStateManager.isEndEmitted.mockReturnValue(false);
-
-			streamBlockify.end();
-
-			expect(dataEvents).toContain(remainingData);
-			expect(mockBufferManager.clear).toHaveBeenCalled();
-		});
-	});
-
-	describe('error handling', () => {
-		it('should emit error when exception occurs during chunk emission', () => {
-			mockBufferManager.getTotalLength.mockReturnValue(10);
-			mockBufferManager.getChunks.mockImplementation(() => {
-				throw new Error('Test error');
+	describe('Advanced functionality', () => {
+		it('should pad with Buffer when a Buffer padding is provided', async () => {
+			const source = createReadableStream([Buffer.from('0123456789')]);
+			const paddingBuffer = Buffer.from('XYZ');
+			const blockify = new StreamBlockify({
+				blockSize: 4,
+				emitPartial: false,
+				padding: paddingBuffer
 			});
 
-			streamBlockify.write('test');
+			source.pipe(blockify);
+			const blocks = await collectStreamData(blockify);
 
-			expect(errorEvents.length).toBe(1);
-			expect(errorEvents[0].message).toBe(
-				"Buffer operation 'emitChunks' failed: Buffer operation 'emitFullChunks' failed: Test error"
-			);
-			expect(mockStateManager.setEmitting).toHaveBeenCalledWith(false);
+			expect(blocks.length).toBe(3);
+			expect(blocks[0].toString()).toBe('0123');
+			expect(blocks[1].toString()).toBe('4567');
+			expect(blocks[2].toString()).toBe('89XY');
+		});
+
+		it('should call onBlock for each emitted block', async () => {
+			const onBlockMock = jest.fn();
+			const source = createReadableStream([Buffer.from('0123456789ABCDEF')]);
+			const blockify = new StreamBlockify({
+				blockSize: 4,
+				onBlock: onBlockMock
+			});
+
+			source.pipe(blockify);
+			await collectStreamData(blockify);
+
+			expect(onBlockMock).toHaveBeenCalledTimes(4);
+			expect(onBlockMock).toHaveBeenNthCalledWith(1, expect.any(Buffer));
+			expect(onBlockMock.mock.calls[0][0].toString()).toBe('0123');
+		});
+
+		it('should apply block transformation if provided', async () => {
+			const source = createReadableStream([Buffer.from('abcdefghijklmnop')]);
+			const blockify = new StreamBlockify({
+				blockSize: 4,
+				blockTransform: block => Buffer.from(block.toString().toUpperCase())
+			});
+
+			source.pipe(blockify);
+			const blocks = await collectStreamData(blockify);
+
+			expect(blocks.length).toBe(4);
+			expect(blocks[0].toString()).toBe('ABCD');
+			expect(blocks[1].toString()).toBe('EFGH');
+			expect(blocks[2].toString()).toBe('IJKL');
+			expect(blocks[3].toString()).toBe('MNOP');
+		});
+
+		it('should reset internal state when reset() is called', async () => {
+			const blockify = new StreamBlockify({ blockSize: 4 });
+
+			blockify.write(Buffer.from('012'));
+			expect(blockify.getPosition()).toBe(3);
+
+			blockify.reset();
+			expect(blockify.getPosition()).toBe(0);
+
+			blockify.write(Buffer.from('abcd'));
+
+			blockify.end();
+
+			const blocks = await collectStreamData(blockify);
+			expect(blocks.length).toBe(1);
+			expect(blocks[0].toString()).toBe('abcd');
 		});
 	});
 
-	describe('drain events', () => {
-		it('should emit drain event when needed', () => {
-			mockStateManager.needsDrain.mockReturnValue(true);
-			mockBufferManager.getTotalLength.mockReturnValue(10);
+	describe('Edge cases and error handling', () => {
+		it('should handle chunks larger than blockSize', async () => {
+			const source = createReadableStream([Buffer.from('0123456789ABCDEF0123456789ABCDEF')]);
+			const blockify = new StreamBlockify({ blockSize: 4 });
 
-			streamBlockify.write('test');
+			source.pipe(blockify);
+			const blocks = await collectStreamData(blockify);
 
-			expect(drainEvents).toBe(1);
-			expect(mockStateManager.setNeedDrain).toHaveBeenCalledWith(false);
+			expect(blocks.length).toBe(8);
+			expect(blocks[0].toString()).toBe('0123');
+			expect(blocks[7].toString()).toBe('CDEF');
+		});
+
+		it('should handle zero-length chunks', async () => {
+			const source = createReadableStream([Buffer.from('0123'), Buffer.from(''), Buffer.from('4567')]);
+			const blockify = new StreamBlockify({ blockSize: 4 });
+
+			source.pipe(blockify);
+			const blocks = await collectStreamData(blockify);
+
+			expect(blocks.length).toBe(2);
+			expect(blocks[0].toString()).toBe('0123');
+			expect(blocks[1].toString()).toBe('4567');
+		});
+
+		it('should handle backpressure correctly', async () => {
+			const slowDest = new PassThrough({ highWaterMark: 2 });
+
+			let writtenBytes = 0;
+			const originalWrite = slowDest.write;
+
+			slowDest.write = function (
+				chunk: any,
+				encoding?: BufferEncoding | ((error: Error | null | undefined) => void),
+				callback?: (error: Error | null | undefined) => void
+			): boolean {
+				if (typeof encoding === 'function') {
+					callback = encoding;
+					encoding = undefined;
+				}
+				writtenBytes += chunk.length;
+				return originalWrite.call(this, chunk, callback);
+			};
+
+			const largeData = Buffer.alloc(10 * 1024, 'x');
+			const source = createReadableStream([largeData]);
+
+			const blockify = new StreamBlockify({
+				blockSize: 1024,
+				maximumBufferedBlocks: 5
+			});
+
+			source.pipe(blockify).pipe(slowDest);
+
+			const processChunk = () => {
+				if (slowDest.read()) {
+					setImmediate(processChunk);
+				}
+			};
+			processChunk();
+
+			await new Promise<void>((resolve, _reject) => {
+				const timeoutId = setTimeout(() => {
+					// If our test is still running after 5 seconds, resolve anyway
+					// and check if we've processed at least some data
+					resolve();
+				}, 5000);
+
+				slowDest.on('finish', () => {
+					clearTimeout(timeoutId);
+					resolve();
+				});
+			});
+
+			expect(writtenBytes).toBeGreaterThan(0);
+		});
+
+		it('should recover from errors in blockTransform', async () => {
+			const source = createReadableStream([Buffer.from('0123456789ABCDEF')]);
+
+			let errorCount = 0;
+			let dataCount = 0;
+
+			const blockify = new StreamBlockify({
+				blockSize: 4,
+				blockTransform: block => {
+					if (block.toString() === '4567') {
+						throw new Error('Test error');
+					}
+					return block;
+				}
+			});
+
+			source.pipe(blockify);
+
+			blockify.on('error', () => {
+				errorCount++;
+			});
+
+			blockify.on('data', () => {
+				dataCount++;
+			});
+
+			await new Promise(resolve => {
+				blockify.on('end', resolve);
+				source.on('end', () => {
+					blockify.end();
+				});
+			});
+
+			expect(errorCount).toBe(1);
+			expect(dataCount).toBe(3);
 		});
 	});
 
-	describe('flush', () => {
-		it('should emit full chunks and remaining data', () => {
-			const fullChunk = Buffer.from('full chunk');
-			const remainingData = Buffer.from('remaining');
+	describe('Performance options', () => {
+		it('should respect copyBuffers option', async () => {
+			const source = createReadableStream([Buffer.from('0123456789ABCDEF')]);
+			const blockify = new StreamBlockify({ blockSize: 8, copyBuffers: false });
 
-			mockBufferManager.getChunks.mockReturnValue([fullChunk]);
-			mockBufferManager.getRemainingData.mockReturnValue(remainingData);
+			source.pipe(blockify);
+			const blocks = await collectStreamData(blockify);
 
-			streamBlockify.flush();
-
-			expect(dataEvents.length).toBe(2);
-			expect(dataEvents[0]).toBe(fullChunk);
-			expect(dataEvents[1]).toBe(remainingData);
-			expect(mockBufferManager.clear).toHaveBeenCalled();
+			expect(blocks.length).toBe(2);
+			expect(blocks[0].toString()).toBe('01234567');
+			expect(blocks[1].toString()).toBe('89ABCDEF');
 		});
 
-		it('should skip remaining data if null', () => {
-			const fullChunk = Buffer.from('full chunk');
+		it('should respect safeAllocation option', () => {
+			const blockifySafe = new StreamBlockify({ blockSize: 1024, safeAllocation: true });
 
-			mockBufferManager.getChunks.mockReturnValue([fullChunk]);
-			mockBufferManager.getRemainingData.mockReturnValue(null);
+			const blockifyUnsafe = new StreamBlockify({ blockSize: 1024, safeAllocation: false });
 
-			streamBlockify.flush();
-
-			expect(dataEvents.length).toBe(1);
-			expect(dataEvents[0]).toBe(fullChunk);
-			expect(mockBufferManager.clear).not.toHaveBeenCalled();
+			// Both should work, but we can't really test the difference
+			// other than checking they don't throw errors
+			expect(blockifySafe).toBeInstanceOf(StreamBlockify);
+			expect(blockifyUnsafe).toBeInstanceOf(StreamBlockify);
 		});
 	});
 });

@@ -130,4 +130,5 @@ dist
 .pnp.*
 
 type-docs/
-__examples__/basic-file-chunking/output.txt
+__examples__/basic-usage/output.txt
+__benchmark__/results/

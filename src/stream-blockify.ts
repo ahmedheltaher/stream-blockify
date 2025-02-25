@@ -1,410 +1,286 @@
-import { Duplex, DuplexOptions } from 'stream';
-import { DefaultBufferManager } from './default-buffer-manager';
-import { DefaultStreamStateManager } from './default-stream-state-manager';
-import { BufferOperationError, ValidationError, WriteAfterEndError } from './errors';
-import { BufferManager, StreamBlockifyConfig, StreamMetrics, StreamStateManager } from './types';
+import { Transform, TransformCallback } from 'node:stream';
+import { BlockifyOptions } from './types';
 
 /**
- * StreamBlockify transforms incoming data into fixed-size chunks.
- * It buffers incoming data and emits chunks of a specified size.
+ * A Transform stream that processes input data in fixed-size blocks.
+ *
+ * The StreamBlockify class extends the Transform stream and processes incoming data in fixed-size blocks.
+ * It provides options for handling partial blocks, padding, and custom block transformations.
+ *
+ * @example
+ * ```typescript
+ * import { StreamBlockify } from 'stream-blockify';
+ *
+ * const blockify = new StreamBlockify({
+ *   blockSize: 1024,
+ *   emitPartial: true,
+ *   padding: 0,
+ *   copyBuffers: true,
+ *   onBlock: (block) => {
+ *     console.log('New block:', block);
+ *   },
+ *   maxBufferedBlocks: 10,
+ *   blockTransform: (block) => {
+ *     // Custom transformation logic
+ *     return block;
+ *   }
+ * });
+ *
+ * inputStream.pipe(blockify).pipe(outputStream);
+ * ```
+ *
+ * @public
  */
-export class StreamBlockify extends Duplex {
+export class StreamBlockify extends Transform {
 	/**
-	 * Default chunk size if not specified in the configuration.
+	 * The internal buffer used for block allocation.
+	 * @private
 	 */
-	private readonly DEFAULT_CHUNK_SIZE = 512;
+	private _buffer: Buffer;
 
 	/**
-	 * Minimum allowable chunk size
+	 * The current position in the buffer.
+	 * @private
 	 */
-	private readonly MIN_CHUNK_SIZE = 1;
+	private _position = 0;
 
 	/**
-	 * Maximum allowable chunk size to prevent memory issues
+	 * The size of each block in bytes.
+	 * @private
 	 */
-	private readonly MAX_CHUNK_SIZE = 1024 * 1024 * 10; // 10MB
+	private readonly _blockSize: number;
 
 	/**
-	 * Size of each chunk to be emitted.
+	 * Whether to emit partial blocks when the stream ends.
+	 * If set to false, the last block will be padded with the specified padding value.
+	 * @private
+	 * @default true
 	 */
-	private readonly chunkSize: number;
+	private readonly _emitPartial: boolean;
 
 	/**
-	 * Manager for handling buffer operations.
+	 * The padding to use for incomplete blocks.
+	 * If padding is a number, it will be used to fill the remaining bytes of the block.
+	 * If padding is a Buffer, its content will be used to fill the remaining bytes.
+	 * If emitPartial is true, this value is ignored.
+	 * @private
+	 * @default 0
 	 */
-	private readonly bufferManager: BufferManager;
+	private readonly _padding: number | Buffer;
 
 	/**
-	 * Manager for handling stream state.
+	 * Whether to copy buffers before emitting them.
+	 * If set to false, the internal buffer will be reused for further processing.
+	 * If set to true, a new buffer will be allocated for each block
+	 * to prevent overwriting the internal buffer before consumers read it.
+	 * @private
+	 * @default true
 	 */
-	private readonly stateManager: StreamStateManager;
+	private readonly _copyBuffers: boolean;
 
 	/**
-	 * Stream metrics for monitoring
+	 * A callback function to be called with each emitted block.
+	 * @private
 	 */
-	private metrics: StreamMetrics = {
-		totalChunksProcessed: 0,
-		totalBytesProcessed: 0,
-		currentBufferSize: 0,
-		lastProcessingTime: 0
-	};
+	private readonly _onBlock?: (block: Buffer) => void;
 
 	/**
-	 * Maximum buffer size to prevent memory issues
+	 * The maximum number of blocks to buffer before applying backpressure.
+	 * If set to 0, there is no limit on the number of buffered blocks.
+	 * @private
+	 * @default 0
 	 */
-	private readonly maxBufferSize: number;
+	private readonly _maximumBufferedBlocks: number;
 
 	/**
-	 * Creates a new StreamBlockify instance.
-	 * @param config - Configuration options including chunk size.
-	 * @param bufferManager - Optional custom buffer manager.
-	 * @param stateManager - Optional custom state manager.
-	 * @param streamOptions - Optional Duplex stream configuration options.
+	 * A function to transform each block before emitting it.
+	 * @private
 	 */
-	constructor(
-		config: StreamBlockifyConfig = {},
-		bufferManager?: BufferManager,
-		stateManager?: StreamStateManager,
-		streamOptions: DuplexOptions = {}
-	) {
-		// Pass stream options to parent constructor
-		super({
-			...streamOptions,
-			readableObjectMode: streamOptions.readableObjectMode ?? false,
-			writableObjectMode: streamOptions.writableObjectMode ?? false,
-			allowHalfOpen: streamOptions.allowHalfOpen ?? true,
-			highWaterMark: streamOptions.highWaterMark ?? 16384
-		});
+	private readonly _blockTransform?: (block: Buffer) => Buffer;
 
-		// Validate chunk size
-		const providedSize = config.size ?? this.DEFAULT_CHUNK_SIZE;
-		if (providedSize < this.MIN_CHUNK_SIZE || providedSize > this.MAX_CHUNK_SIZE) {
-			throw new ValidationError(
-				'chunkSize',
-				`Chunk size must be between ${this.MIN_CHUNK_SIZE} and ${this.MAX_CHUNK_SIZE} bytes`
-			);
+	/**
+	 * The current number of buffered blocks.
+	 * @private
+	 */
+	private _bufferedBlocksCount = 0;
+
+	/**
+	 * Constructs a new instance of the StreamBlockify class.
+	 *
+	 * @param options - The configuration options for the StreamBlockify instance.
+	 * @throws Error if the blockSize is not a positive integer.
+	 * @public
+	 */
+	constructor(options: BlockifyOptions) {
+		if (!options.blockSize || options.blockSize <= 0 || !Number.isInteger(options.blockSize)) {
+			throw new Error('blockSize must be a positive integer');
 		}
 
-		this.chunkSize = providedSize;
-		this.maxBufferSize = config.maxBufferSize ?? this.chunkSize * 100; // Default to 100x chunk size
-		this.bufferManager = bufferManager ?? new DefaultBufferManager();
-		this.stateManager = stateManager ?? new DefaultStreamStateManager();
+		const transformOptions = {
+			...options,
+			highWaterMark: options.highWaterMark || options.blockSize * 8
+		};
 
-		// Set up event listeners for cleanup
-		this.once('end', this.cleanup.bind(this));
-		this.once('error', this.cleanup.bind(this));
+		super(transformOptions);
+
+		this._blockSize = options.blockSize;
+		this._emitPartial = options.emitPartial !== false;
+		this._padding = options.padding !== undefined ? options.padding : 0;
+		this._copyBuffers = options.copyBuffers !== false;
+		this._onBlock = options.onBlock;
+		this._maximumBufferedBlocks = options.maximumBufferedBlocks || 0;
+		this._blockTransform = options.blockTransform;
+
+		// Allocate buffer - either safely (zeroed) or unsafely (faster)
+		this._buffer = options.safeAllocation ? Buffer.alloc(this._blockSize) : Buffer.allocUnsafe(this._blockSize);
+		this._position = 0;
 	}
 
 	/**
-	 * Implementation of the _write method required by the Writable interface.
-	 * @param chunk - Data to write.
-	 * @param encoding - Encoding of the data if chunk is a string.
-	 * @param callback - Called when processing is complete.
+	 * Resets the internal state of the stream.
+	 * This method sets the position to the beginning and clears the count of buffered blocks.
+	 * @public
 	 */
-	_write(chunk: any, encoding: BufferEncoding, callback: (error?: Error | null) => void): void {
+	public reset(): void {
+		this._position = 0;
+		this._bufferedBlocksCount = 0;
+	}
+
+	/**
+	 * Retrieves the current position.
+	 * @returns The current position.
+	 * @public
+	 */
+	public getPosition(): number {
+		return this._position;
+	}
+
+	/**
+	 * Retrieves the count of buffered blocks.
+	 * @returns The number of buffered blocks.
+	 * @public
+	 */
+	public getBufferedBlocksCount(): number {
+		return this._bufferedBlocksCount;
+	}
+
+	/**
+	 * Transforms the input chunk by buffering it and emitting blocks of a specified size.
+	 * @param chunk - The input data chunk, which can be a Buffer or a string.
+	 * @param encoding - The encoding of the chunk if it is a string.
+	 * @param callback - A callback function to be called when the transformation is complete or an error occurs.
+	 * @internal
+	 */
+	_transform(chunk: Buffer | string, encoding: BufferEncoding, callback: TransformCallback): void {
 		try {
-			if (this.stateManager.isEnded()) {
-				const error = new WriteAfterEndError();
-				this.emit('error', error);
-				callback(error);
-				return;
-			}
+			const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, encoding);
+			let offset = 0;
 
-			// Check if buffer size would exceed maximum
-			const bufferSize = this.bufferManager.getTotalLength();
-			const chunkSize = Buffer.isBuffer(chunk) ? chunk.length : Buffer.byteLength(chunk, encoding);
-
-			if (bufferSize + chunkSize > this.maxBufferSize) {
-				this.stateManager.setNeedDrain(true);
-				callback();
-				return;
-			}
-
-			// Process the incoming data
-			this.processChunk(chunk, encoding);
-
-			// Update metrics
-			this.metrics.totalBytesProcessed += chunkSize;
-			this.metrics.currentBufferSize = this.bufferManager.getTotalLength();
-
-			if (this.stateManager.needsDrain()) {
-				callback();
-			} else {
-				callback();
-			}
-		} catch (error) {
-			callback(error as Error);
-		}
-	}
-
-	/**
-	 * Implementation of the _read method required by the Readable interface.
-	 * Emits chunks from the buffer when the consumer is ready to read.
-	 */
-	_read(_size: number): void {
-		if (this.stateManager.isPaused()) {
-			this.stateManager.setPaused(false);
-		}
-		this.emitChunks();
-	}
-
-	/**
-	 * Writes data to the stream.
-	 * @param chunk - Data to write.
-	 * @param encoding - Optional encoding if chunk is a string.
-	 * @returns boolean indicating if more data can be written.
-	 * @throws {WriteAfterEndError} If writing after stream has ended.
-	 * @throws {BufferOperationError} If buffer operations fail.
-	 */
-	public write(
-		chunk: Buffer | string,
-		encoding?: BufferEncoding | ((error?: Error | null) => void),
-		callback?: (error?: Error | null) => void
-	): boolean {
-		if (typeof encoding === 'function') {
-			callback = encoding;
-			encoding = undefined;
-		}
-
-		return super.write(chunk, encoding as BufferEncoding, callback);
-	}
-
-	/**
-	 * Pauses the stream, preventing further data from being emitted.
-	 */
-	public pause(): this {
-		this.stateManager.setPaused(true);
-		return super.pause();
-	}
-
-	/**
-	 * Resumes the stream, allowing data to be emitted.
-	 */
-	public resume(): this {
-		this.stateManager.setPaused(false);
-		this.emitChunks();
-		this.emitDrainIfNeeded();
-		return super.resume();
-	}
-
-	/**
-	 * Ends the stream and flushes remaining data.
-	 * @param chunk - Optional final chunk to write before ending.
-	 * @param encoding - Optional encoding if chunk is a string.
-	 * @param callback - Called when ending is complete.
-	 */
-	public end(chunk?: any, encoding?: BufferEncoding | (() => void), callback?: () => void): this {
-		if (typeof encoding === 'function') {
-			callback = encoding;
-			encoding = undefined;
-		}
-
-		// Set ended state before calling super.end to prevent race conditions
-		this.stateManager.setEnded(true);
-
-		// Call super.end which will eventually call _final
-		return super.end(chunk, encoding as BufferEncoding, callback);
-	}
-
-	/**
-	 * Implementation of the _final method required by the Writable interface.
-	 * Called before the stream closes, after all data has been written.
-	 */
-	_final(callback: (error?: Error | null) => void): void {
-		try {
-			this.flush();
-			callback();
-		} catch (error) {
-			callback(error as Error);
-		}
-	}
-
-	/**
-	 * Flushes any remaining data in the buffer.
-	 */
-	public flush(): void {
-		this.emitChunks(true);
-	}
-
-	/**
-	 * Returns current metrics about the stream processing.
-	 * @returns StreamMetrics object with current metrics.
-	 */
-	public getMetrics(): StreamMetrics {
-		// Update current buffer size
-		this.metrics.currentBufferSize = this.bufferManager.getTotalLength();
-		return { ...this.metrics };
-	}
-
-	/**
-	 * Performs cleanup operations when the stream is finished.
-	 */
-	private cleanup(): void {
-		// Ensure we clear any remaining buffers to prevent memory leaks
-		this.bufferManager.clear();
-	}
-
-	/**
-	 * Processes a chunk of data, adding it to the buffer and emitting chunks if necessary.
-	 * @param chunk - Data to process.
-	 * @param encoding - Encoding of the data if chunk is a string.
-	 * @throws {BufferOperationError} If buffer operations fail.
-	 */
-	private processChunk(chunk: any, encoding?: BufferEncoding): void {
-		try {
-			const startTime = process.hrtime();
-
-			const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk), encoding);
-
-			if (buffer.length) {
-				this.bufferManager.addBuffer(buffer);
-			}
-
-			if (this.bufferManager.getTotalLength() >= this.chunkSize) {
-				if (this.stateManager.isPaused()) {
-					this.stateManager.setNeedDrain(true);
+			while (offset < buffer.length) {
+				if (this._maximumBufferedBlocks > 0 && this._bufferedBlocksCount >= this._maximumBufferedBlocks) {
+					const remainingChunk = buffer.subarray(offset);
+					this.once('drain', () => {
+						this._transform(remainingChunk, encoding, callback);
+					});
 					return;
 				}
-				this.emitChunks();
-			}
 
-			// Update processing time metric
-			const [seconds, nanoseconds] = process.hrtime(startTime);
-			this.metrics.lastProcessingTime = seconds * 1000 + nanoseconds / 1000000;
-		} catch (error) {
-			this.handleBufferError('processChunk', error as Error);
-			throw error;
-		}
-	}
+				const bytesToCopy = Math.min(this._blockSize - this._position, buffer.length - offset);
+				buffer.copy(this._buffer, this._position, offset, offset + bytesToCopy);
 
-	/**
-	 * Emits chunks of data from the buffer.
-	 * @param needToFlush - Whether to flush remaining data.
-	 * @throws {BufferOperationError} If buffer operations fail.
-	 */
-	private emitChunks(needToFlush: boolean = false): void {
-		// Use atomic operations pattern to avoid race condition
-		if (this.shouldSkipEmission()) {
-			return;
-		}
+				this._position += bytesToCopy;
+				offset += bytesToCopy;
 
-		this.stateManager.setEmitting(true);
-		try {
-			this.emitFullChunks();
-			if (needToFlush) {
-				this.emitRemainingData();
-			}
-			this.handleStreamEvents();
-		} catch (error) {
-			this.handleBufferError('emitChunks', error as Error);
-		} finally {
-			this.stateManager.setEmitting(false);
-		}
-	}
-
-	/**
-	 * Determines if chunk emission should be skipped.
-	 * @returns boolean indicating if emission should be skipped.
-	 */
-	private shouldSkipEmission(): boolean {
-		return this.stateManager.isEmitting() || this.stateManager.isPaused();
-	}
-
-	/**
-	 * Emits full chunks of data from the buffer.
-	 * @throws {BufferOperationError} If buffer operations fail.
-	 */
-	private emitFullChunks(): void {
-		try {
-			const chunks = this.bufferManager.getChunks(this.chunkSize);
-			for (const chunk of chunks) {
-				// Only push if the consumer can accept more data
-				const canContinue = this.push(chunk);
-				this.metrics.totalChunksProcessed++;
-
-				if (!canContinue) {
-					this.stateManager.setPaused(true);
-					break;
+				if (this._position === this._blockSize) {
+					this._emitBlock(this._buffer);
+					this._position = 0;
 				}
 			}
+
+			callback();
 		} catch (error) {
-			throw new BufferOperationError('emitFullChunks', (error as Error).message);
+			callback(error instanceof Error ? error : new Error(String(error)));
 		}
 	}
 
 	/**
-	 * Emits any remaining data in the buffer.
-	 * @throws {BufferOperationError} If buffer operations fail.
+	 * Flushes the remaining data in the buffer when the stream is ending.
+	 * @param callback - A callback function to be called after the flush operation is complete.
+	 * @internal
 	 */
-	private emitRemainingData(): void {
+	_flush(callback: TransformCallback): void {
 		try {
-			const remaining = this.bufferManager.getRemainingData();
-			if (remaining && remaining.length > 0) {
-				this.push(remaining);
-				this.bufferManager.clear();
-
-				if (remaining.length < this.chunkSize) {
-					this.emit('incompleteChunk', remaining.length);
+			if (this._position > 0) {
+				if (this._emitPartial) {
+					this._emitBlock(this._buffer.subarray(0, this._position));
 				} else {
-					this.metrics.totalChunksProcessed++;
+					this._applyPadding();
+					this._emitBlock(this._buffer);
 				}
 			}
 
-			// Signal the end of the readable stream if we're ended
-			if (this.stateManager.isEnded()) {
-				this.push(null);
+			callback();
+		} catch (error) {
+			callback(error instanceof Error ? error : new Error(String(error)));
+		}
+	}
+
+	/**
+	 * Applies padding to the internal buffer.
+	 *
+	 * If the padding is a Buffer, it will be applied in a cyclic manner starting from the current position
+	 * up to the block size. If the padding is not a Buffer, it will fill the buffer from the current position
+	 * to the block size with the padding value.
+	 *
+	 * @private
+	 */
+	private _applyPadding(): void {
+		if (Buffer.isBuffer(this._padding)) {
+			let paddingOffset = 0;
+			for (let i = this._position; i < this._blockSize; i++) {
+				this._buffer[i] = this._padding[paddingOffset];
+				paddingOffset = (paddingOffset + 1) % this._padding.length;
+			}
+		} else {
+			this._buffer.fill(this._padding, this._position, this._blockSize);
+		}
+	}
+
+	/**
+	 * Emits a block of data to the stream.
+	 * @param block - The buffer containing the block of data to emit.
+	 * @private
+	 */
+	private _emitBlock(block: Buffer): void {
+		try {
+			const outputBlock = Buffer.from(block);
+
+			if (this._copyBuffers) {
+				this._buffer =
+					this._buffer.length === this._blockSize ?
+						Buffer.allocUnsafe(this._blockSize)
+					:	Buffer.allocUnsafe(this._buffer.length);
+			}
+
+			const finalBlock = this._blockTransform ? this._blockTransform(outputBlock) : outputBlock;
+
+			if (this._onBlock) {
+				this._onBlock(finalBlock);
+			}
+
+			this._bufferedBlocksCount++;
+			const canContinue = this.push(finalBlock);
+
+			if (!canContinue && this._maximumBufferedBlocks > 0) {
+				this.once('drain', () => {
+					this._bufferedBlocksCount--;
+					this.emit('drain');
+				});
+			} else {
+				this._bufferedBlocksCount--;
 			}
 		} catch (error) {
-			throw new BufferOperationError('emitRemainingData', (error as Error).message);
+			this.emit('error', error instanceof Error ? error : new Error(String(error)));
 		}
-	}
-
-	/**
-	 * Handles stream events such as 'drain' and 'end'.
-	 */
-	private handleStreamEvents(): void {
-		this.emitDrainIfNeeded();
-		this.emitEndIfNeeded();
-	}
-
-	/**
-	 * Emits a 'drain' event if needed.
-	 */
-	private emitDrainIfNeeded(): void {
-		if (this.stateManager.needsDrain()) {
-			this.stateManager.setNeedDrain(false);
-			this.emit('drain');
-		}
-	}
-
-	/**
-	 * Emits an 'end' event if the stream has ended and all data has been emitted.
-	 */
-	private emitEndIfNeeded(): void {
-		if (this.isStreamEnded()) {
-			this.stateManager.setEndEmitted(true);
-		}
-	}
-
-	/**
-	 * Checks if the stream has ended and all data has been emitted.
-	 * @returns boolean indicating if the stream has ended.
-	 */
-	private isStreamEnded(): boolean {
-		return (
-			this.bufferManager.getTotalLength() === 0 &&
-			this.stateManager.isEnded() &&
-			!this.stateManager.isEndEmitted()
-		);
-	}
-
-	/**
-	 * Handles buffer operation errors by emitting an 'error' event.
-	 * @param operation - The operation during which the error occurred.
-	 * @param error - The error that occurred.
-	 */
-	private handleBufferError(operation: string, error: Error): void {
-		const bufferError = new BufferOperationError(operation, error.message);
-		this.emit('error', bufferError);
 	}
 }

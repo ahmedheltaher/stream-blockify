@@ -4,9 +4,9 @@
 	"out": "type-docs",
 	"theme": "default",
 	"includeVersion": true,
-	"excludePrivate": true,
-	"excludeProtected": true,
-	"excludeInternal": true,
+	"excludePrivate": false,
+	"excludeProtected": false,
+	"excludeInternal": false,
 	"gitRevision": "main",
 	"hideGenerator": true
 }

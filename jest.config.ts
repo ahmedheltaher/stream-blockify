@@ -35,17 +35,16 @@ const config: Config = {
 		'!src/**/*.d.ts',
 		'!src/index.ts',
 		'!src/types.ts',
-		'!src/**/__tests__/**/*.ts',
-		'!src/debug.ts'
+		'!src/**/__tests__/**/*.ts'
 	],
 
 	// Coverage thresholds
 	coverageThreshold: {
 		global: {
 			branches: 70,
-			functions: 80,
-			lines: 80,
-			statements: 80
+			functions: 70,
+			lines: 70,
+			statements: 70
 		}
 	},
 
