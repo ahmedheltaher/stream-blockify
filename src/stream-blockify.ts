@@ -192,8 +192,17 @@ export class StreamBlockify extends Transform {
 				offset += bytesToCopy;
 
 				if (this._position === this._blockSize) {
-					this._emitBlock(this._buffer);
+					const canContinue = this._emitBlock(this._buffer);
+
 					this._position = 0;
+
+					if (!canContinue && this._maximumBufferedBlocks > 0 && offset < buffer.length) {
+						const remainingChunk = buffer.subarray(offset);
+						this.once('drain', () => {
+							this._transform(remainingChunk, encoding, callback);
+						});
+						return;
+					}
 				}
 			}
 
@@ -219,7 +228,7 @@ export class StreamBlockify extends Transform {
 				}
 			}
 
-			callback();
+			process.nextTick(callback);
 		} catch (error) {
 			callback(error instanceof Error ? error : new Error(String(error)));
 		}
@@ -249,9 +258,10 @@ export class StreamBlockify extends Transform {
 	/**
 	 * Emits a block of data to the stream.
 	 * @param block - The buffer containing the block of data to emit.
+	 * @returns Whether the stream can consume more data.
 	 * @private
 	 */
-	private _emitBlock(block: Buffer): void {
+	private _emitBlock(block: Buffer): boolean {
 		try {
 			const outputBlock = Buffer.from(block);
 
@@ -269,18 +279,22 @@ export class StreamBlockify extends Transform {
 			}
 
 			this._bufferedBlocksCount++;
+
 			const canContinue = this.push(finalBlock);
 
 			if (!canContinue && this._maximumBufferedBlocks > 0) {
-				this.once('drain', () => {
+				process.nextTick(() => {
 					this._bufferedBlocksCount--;
 					this.emit('drain');
 				});
 			} else {
 				this._bufferedBlocksCount--;
 			}
+
+			return canContinue;
 		} catch (error) {
 			this.emit('error', error instanceof Error ? error : new Error(String(error)));
+			return false;
 		}
 	}
 }
