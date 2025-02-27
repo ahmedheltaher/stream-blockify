@@ -27,13 +27,6 @@ export interface BlockifyOptions extends TransformOptions {
 	padding?: number | Buffer;
 
 	/**
-	 * Whether to copy buffers when pushing them.
-	 * Set to false for better performance if consumers don't modify the output.
-	 * @default true
-	 */
-	copyBuffers?: boolean;
-
-	/**
 	 * Whether to allocate buffer as zeroed-out.
 	 * Safer but slower than uninitialized allocation.
 	 * @default false

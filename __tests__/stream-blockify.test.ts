@@ -300,18 +300,6 @@ describe('StreamBlockify', () => {
 	});
 
 	describe('Performance options', () => {
-		it('should respect copyBuffers option', async () => {
-			const source = createReadableStream([Buffer.from('0123456789ABCDEF')]);
-			const blockify = new StreamBlockify({ blockSize: 8, copyBuffers: false });
-
-			source.pipe(blockify);
-			const blocks = await collectStreamData(blockify);
-
-			expect(blocks.length).toBe(2);
-			expect(blocks[0].toString()).toBe('01234567');
-			expect(blocks[1].toString()).toBe('89ABCDEF');
-		});
-
 		it('should respect safeAllocation option', () => {
 			const blockifySafe = new StreamBlockify({ blockSize: 1024, safeAllocation: true });
 

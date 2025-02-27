@@ -15,7 +15,6 @@ import { BlockifyOptions } from './types';
  *   blockSize: 1024,
  *   emitPartial: true,
  *   padding: 0,
- *   copyBuffers: true,
  *   onBlock: (block) => {
  *     console.log('New block:', block);
  *   },
@@ -69,16 +68,6 @@ export class StreamBlockify extends Transform {
 	private readonly _padding: number | Buffer;
 
 	/**
-	 * Whether to copy buffers before emitting them.
-	 * If set to false, the internal buffer will be reused for further processing.
-	 * If set to true, a new buffer will be allocated for each block
-	 * to prevent overwriting the internal buffer before consumers read it.
-	 * @private
-	 * @default true
-	 */
-	private readonly _copyBuffers: boolean;
-
-	/**
 	 * A callback function to be called with each emitted block.
 	 * @private
 	 */
@@ -126,7 +115,6 @@ export class StreamBlockify extends Transform {
 		this._blockSize = options.blockSize;
 		this._emitPartial = options.emitPartial !== false;
 		this._padding = options.padding !== undefined ? options.padding : 0;
-		this._copyBuffers = options.copyBuffers !== false;
 		this._onBlock = options.onBlock;
 		this._maximumBufferedBlocks = options.maximumBufferedBlocks || 0;
 		this._blockTransform = options.blockTransform;
@@ -264,13 +252,6 @@ export class StreamBlockify extends Transform {
 	private _emitBlock(block: Buffer): boolean {
 		try {
 			const outputBlock = Buffer.from(block);
-
-			if (this._copyBuffers) {
-				this._buffer =
-					this._buffer.length === this._blockSize ?
-						Buffer.allocUnsafe(this._blockSize)
-					:	Buffer.allocUnsafe(this._buffer.length);
-			}
 
 			const finalBlock = this._blockTransform ? this._blockTransform(outputBlock) : outputBlock;
 
