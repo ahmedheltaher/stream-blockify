@@ -1,4 +1,5 @@
 import { Transform, TransformCallback } from 'node:stream';
+import { BlockifyError } from './errors';
 import { BlockifyOptions } from './types';
 
 /**
@@ -102,7 +103,7 @@ export class StreamBlockify extends Transform {
 	 */
 	constructor(options: BlockifyOptions) {
 		if (!options.blockSize || options.blockSize <= 0 || !Number.isInteger(options.blockSize)) {
-			throw new Error('blockSize must be a positive integer');
+			throw new BlockifyError('blockSize must be a positive integer');
 		}
 
 		const transformOptions = {
