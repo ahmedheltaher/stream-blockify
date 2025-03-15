@@ -3,9 +3,10 @@ export class BlockifyError extends Error {
 		super(message, options);
 		this.name = this.constructor.name;
 
-		// Only capture stack trace if Error.captureStackTrace is available (Node.js)
 		if (Error.captureStackTrace) {
 			Error.captureStackTrace(this, this.constructor);
 		}
+
+		Object.setPrototypeOf(this, BlockifyError.prototype);
 	}
 }
