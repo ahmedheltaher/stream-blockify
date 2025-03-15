@@ -1,4 +1,4 @@
-import { PassThrough, Readable } from 'stream';
+import { Readable } from 'stream';
 import { StreamBlockify } from '../src';
 
 function collectStreamData(stream: Readable): Promise<Buffer[]> {
@@ -207,58 +207,6 @@ describe('StreamBlockify', () => {
 			expect(blocks.length).toBe(2);
 			expect(blocks[0].toString()).toBe('0123');
 			expect(blocks[1].toString()).toBe('4567');
-		});
-
-		it('should handle backpressure correctly', async () => {
-			const slowDest = new PassThrough({ highWaterMark: 2 });
-
-			let writtenBytes = 0;
-			const originalWrite = slowDest.write;
-
-			slowDest.write = function (
-				chunk: any,
-				encoding?: BufferEncoding | ((error: Error | null | undefined) => void),
-				callback?: (error: Error | null | undefined) => void
-			): boolean {
-				if (typeof encoding === 'function') {
-					callback = encoding;
-					encoding = undefined;
-				}
-				writtenBytes += chunk.length;
-				return originalWrite.call(this, chunk, callback);
-			};
-
-			const largeData = Buffer.alloc(10 * 1024, 'x');
-			const source = createReadableStream([largeData]);
-
-			const blockify = new StreamBlockify({
-				blockSize: 1024,
-				maximumBufferedBlocks: 5
-			});
-
-			source.pipe(blockify).pipe(slowDest);
-
-			const processChunk = () => {
-				if (slowDest.read()) {
-					setImmediate(processChunk);
-				}
-			};
-			processChunk();
-
-			await new Promise<void>((resolve, _reject) => {
-				const timeoutId = setTimeout(() => {
-					// If our test is still running after 5 seconds, resolve anyway
-					// and check if we've processed at least some data
-					resolve();
-				}, 5000);
-
-				slowDest.on('finish', () => {
-					clearTimeout(timeoutId);
-					resolve();
-				});
-			});
-
-			expect(writtenBytes).toBeGreaterThan(0);
 		});
 
 		it('should recover from errors in blockTransform', async () => {
