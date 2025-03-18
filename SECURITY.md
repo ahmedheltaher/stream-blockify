@@ -2,17 +2,26 @@
 
 ## Reporting a Vulnerability
 
-At Stream Blockify, we take security vulnerabilities seriously. If you have a security issue, please email us at [ahmedheltaher@gmail.com](mailto:ahmedheltaher@gmail.com). We will work with you to address the problem as soon as possible.
+Hey there! Thanks for taking an interest in the security of stream-blockify. I appreciate your help in keeping this project secure for everyone.
 
-## Responsible Disclosure
+If you've found a security issue, please send an email to <ahmedheltaher@gmail.com>. I'll review and address reports as promptly as possible.
 
-We kindly request that you follow responsible disclosure practices when reporting security vulnerabilities to us. This means:
+## What to Include
 
-- Do not publicly disclose the vulnerability until our team has addressed it.
-- Provide sufficient details to reproduce the vulnerability, including steps and any necessary proof-of-concept code or screenshots.
+When reporting an issue, it's super helpful if you can provide:
 
-## Acknowledgment
+- A brief description of the vulnerability
+- Steps to reproduce if possible
+- Any potential impact you foresee
 
-We deeply appreciate the efforts of security researchers and users in identifying and reporting vulnerabilities to us. As a token of our appreciation, we will acknowledge individuals or organizations who responsibly disclose security issues to us.
+## Disclosure
 
-Thank you for helping us keep Stream Blockify safe and secure for everyone!
+I'd appreciate if you'd hold off on public disclosure until there's been a chance to investigate and implement a fix. This helps protect users who might be affected.
+
+## A Note of Thanks
+
+I genuinely appreciate anyone who takes the time to report security issues. Your patience and help make a big difference to this project.
+
+I'll happily acknowledge your contribution (with your permission) once the issue is resolved.
+
+Thanks for helping keep stream-blockify secure!

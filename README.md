@@ -1,13 +1,9 @@
 # stream-blockify
 
-[![npm version](https://img.shields.io/npm/v/stream-blockify.svg)](https://www.npmjs.com/package/stream-blockify)
-[![Build Status](https://img.shields.io/github/workflow/status/ahmedheltaher/stream-blockify/CI)](https://github.com/ahmedheltaher/stream-blockify/actions)
-[![Coverage Status](https://img.shields.io/coveralls/github/ahmedheltaher/stream-blockify/main)](https://coveralls.io/github/ahmedheltaher/stream-blockify?branch=main)
-[![License](https://img.shields.io/npm/l/stream-blockify)](https://github.com/ahmedheltaher/stream-blockify/blob/main/LICENSE)
-[![Downloads](https://img.shields.io/npm/dm/stream-blockify.svg)](https://www.npmjs.com/package/stream-blockify)
-[![TypeScript](https://img.shields.io/badge/TypeScript-4.9+-blue)](https://www.typescriptlang.org/)
-[![Node.js](https://img.shields.io/node/v/stream-blockify)](https://nodejs.org/)
-[![Maintenance](https://img.shields.io/maintenance/yes/2025)](https://github.com/ahmedheltaher/stream-blockify/commits/main)
+[![Publish Package to npm](https://github.com/ahmedheltaher/stream-blockify/actions/workflows/npm-publish.yml/badge.svg)](https://github.com/ahmedheltaher/stream-blockify/actions/workflows/npm-publish.yml)
+![GitHub License](https://img.shields.io/github/license/ahmedheltaher/stream-blockify)
+![NPM Downloads](https://img.shields.io/npm/d18m/stream-blockify)
+![NPM Version](https://img.shields.io/npm/v/stream-blockify)
 
 A powerful and flexible Node.js library for processing streams in fixed-size blocks. This library extends Node's Transform stream to provide block-based data processing with customizable options for handling partial blocks, applying padding, and transforming block content.
 
