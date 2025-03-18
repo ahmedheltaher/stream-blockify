@@ -19,7 +19,7 @@
 		"prepublish": "npm run clean && npm run build",
 		"docs": "typedoc"
 	},
-	"documentation": "https://github.com/ahmedheltaher/stream-blockify/blob/main/docs/README.md",
+	"documentation": "https://github.com/ahmedheltaher/stream-blockify/blob/main/DOCUMENTATION.md",
 	"keywords": [
 		"nodejs",
 		"typescript",

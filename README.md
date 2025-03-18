@@ -1,5 +1,14 @@
 # stream-blockify
 
+[![npm version](https://img.shields.io/npm/v/stream-blockify.svg)](https://www.npmjs.com/package/stream-blockify)
+[![Build Status](https://img.shields.io/github/workflow/status/ahmedheltaher/stream-blockify/CI)](https://github.com/ahmedheltaher/stream-blockify/actions)
+[![Coverage Status](https://img.shields.io/coveralls/github/ahmedheltaher/stream-blockify/main)](https://coveralls.io/github/ahmedheltaher/stream-blockify?branch=main)
+[![License](https://img.shields.io/npm/l/stream-blockify)](https://github.com/ahmedheltaher/stream-blockify/blob/main/LICENSE)
+[![Downloads](https://img.shields.io/npm/dm/stream-blockify.svg)](https://www.npmjs.com/package/stream-blockify)
+[![TypeScript](https://img.shields.io/badge/TypeScript-4.9+-blue)](https://www.typescriptlang.org/)
+[![Node.js](https://img.shields.io/node/v/stream-blockify)](https://nodejs.org/)
+[![Maintenance](https://img.shields.io/maintenance/yes/2025)](https://github.com/ahmedheltaher/stream-blockify/commits/main)
+
 A powerful and flexible Node.js library for processing streams in fixed-size blocks. This library extends Node's Transform stream to provide block-based data processing with customizable options for handling partial blocks, applying padding, and transforming block content.
 
 ## Features
@@ -46,4 +55,10 @@ createReadStream('input.dat')
   .pipe(createWriteStream('output.dat'));
 ```
 
-Streamline your block-based data processing with fine-grained control and optimal performance.
+## Documentation
+
+For complete documentation, see the [Documentation](https://github.com/ahmedheltaher/stream-blockify/blob/main/DOCUMENTATION.md).
+
+## License
+
+MIT © [Ahmed Eltaher](https://github.com/ahmedheltaher)
