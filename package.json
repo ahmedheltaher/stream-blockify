@@ -1,7 +1,7 @@
 {
 	"name": "stream-blockify",
 	"version": "0.1.0",
-	"description": "A high-performance Node.js stream transformer that chunks input into fixed-size blocks. Perfect for processing large files, network protocols, or any scenario requiring precise data segmentation. Written in TypeScript for reliability and type safety.",
+	"description": "A powerful Node.js library for processing streams in fixed-size blocks",
 	"main": "dist/index.js",
 	"types": "dist/index.d.ts",
 	"scripts": {
@@ -19,6 +19,7 @@
 		"prepublish": "npm run clean && npm run build",
 		"docs": "typedoc"
 	},
+	"documentation": "https://github.com/ahmedheltaher/stream-blockify/blob/main/docs/README.md",
 	"keywords": [
 		"nodejs",
 		"typescript",
@@ -27,7 +28,10 @@
 		"chunking",
 		"data-processing",
 		"block-stream",
-		"stream-transformer"
+		"stream-transformer",
+		"block",
+		"transform",
+		"processing"
 	],
 	"author": {
 		"name": "Ahmed Eltaher",
