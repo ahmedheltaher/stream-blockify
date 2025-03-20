@@ -12,21 +12,6 @@ export const benchmarkSets: Array<BenchmarkSet> = [
 		]
 	},
 	{
-		name: 'Benchmark Set 2: Copy Buffers Impact',
-		cases: [
-			{
-				description: 'With copyBuffers: true',
-				blockSize: 64 * 1024,
-				options: { copyBuffers: true }
-			},
-			{
-				description: 'With copyBuffers: false',
-				blockSize: 64 * 1024,
-				options: { copyBuffers: false }
-			}
-		]
-	},
-	{
 		name: 'Benchmark Set 3: Safe Allocation Impact',
 		cases: [
 			{

@@ -15,6 +15,7 @@ A Node.js library for processing streams in fixed-size blocks with advanced opti
   - [Padding Incomplete Blocks](#padding-incomplete-blocks)
   - [Custom Block Transformation](#custom-block-transformation)
   - [Managing Memory Usage](#managing-memory-usage)
+  - [Extra Examples](#extra-examples)
 - [Performance Considerations](#performance-considerations)
 - [Error Handling](#error-handling)
 
@@ -189,6 +190,15 @@ createReadStream('large-file.dat')
     console.log('File processing complete');
   });
 ```
+
+### Extra Examples
+
+Here are some more examples with advanced usage:
+
+- [Basic Usage](./__examples__/basic-usage/index.ts)
+- [Checksum](./__examples__/checksum/index.ts)
+- [Dummy Network Protocol](./__examples__/network-protocol/index.ts)
+- [Transformation](./__examples__/transformation/index.ts)
 
 ## Performance Considerations
 

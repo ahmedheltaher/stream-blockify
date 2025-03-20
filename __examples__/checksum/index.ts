@@ -10,11 +10,9 @@ import { StreamBlockify } from '../../src/stream-blockify';
  * @returns Promise that resolves when processing is complete
  */
 async function run(): Promise<void> {
-	// File setup
 	const filePath = path.join(__dirname, 'example.txt');
 	console.log('Checksumming - Calculate checksums per block');
 
-	// Create streams
 	const readStream = fs.createReadStream(filePath);
 	const blockify = new StreamBlockify({
 		blockSize: 1024,
@@ -24,11 +22,9 @@ async function run(): Promise<void> {
 		}
 	});
 
-	// Track total data processed
 	let totalSize = 0;
 
 	return new Promise((resolve, reject) => {
-		// Set up event handlers
 		blockify.on('data', chunk => {
 			totalSize += chunk.length;
 		});
@@ -38,12 +34,10 @@ async function run(): Promise<void> {
 			resolve();
 		});
 
-		// Connect streams and handle errors
 		readStream.pipe(blockify).resume();
 		readStream.on('error', reject);
 		blockify.on('error', reject);
 	});
 }
 
-// Run the example
 run().catch(console.error);

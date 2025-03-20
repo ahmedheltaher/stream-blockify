@@ -21,28 +21,23 @@ async function run(): Promise<void> {
 
 	let blockCount = 0;
 
-	// Increment block count and log progress every 100 blocks
 	blockify.on('data', () => {
 		blockCount++;
 		if (blockCount % 100 === 0) process.stdout.write('.');
 	});
 
 	return new Promise((resolve, reject) => {
-		// Pipe the read stream through blockify and then to the write stream
 		readStream.pipe(blockify).pipe(writeStream);
 
-		// Resolve the promise when writing is finished
 		writeStream.on('finish', () => {
 			console.log(`\nProcessed ${blockCount} blocks of 1KB each`);
 			resolve();
 		});
 
-		// Handle errors
 		readStream.on('error', reject);
 		blockify.on('error', reject);
 		writeStream.on('error', reject);
 	});
 }
 
-// Run the function and catch any errors
 run().catch(console.error);

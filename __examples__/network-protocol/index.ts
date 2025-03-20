@@ -4,7 +4,6 @@ import net from 'net';
 import { Readable } from 'stream';
 import { StreamBlockify } from '../../src';
 
-// Configuration constants
 const CONFIG = {
 	PORT: 4000,
 	HOST: '127.0.0.1',
@@ -18,7 +17,6 @@ const CONFIG = {
 	}
 };
 
-// Derived constants
 const HEADER_SIZE =
 	CONFIG.PACKET_STRUCTURE.MAGIC_SIZE +
 	CONFIG.PACKET_STRUCTURE.MESSAGE_LENGTH_SIZE +
@@ -174,6 +172,5 @@ function logPacketDetails(packet: Buffer): void {
 	);
 }
 
-// Run the example
 startServer();
 setTimeout(sendPackets, 1000);
