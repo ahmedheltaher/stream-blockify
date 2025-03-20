@@ -10,6 +10,10 @@ A Node.js library for processing streams in fixed-size blocks with advanced opti
   - [StreamBlockify Class](#streamblockify-class)
   - [BlockifyOptions Interface](#blockifyoptions-interface)
   - [BlockifyError Class](#blockifyerror-class)
+- [Debugging](#debugging)
+  - [Enabling Debug Logs](#enabling-debug-logs)
+  - [Log Levels](#log-levels)
+  - [Debug Examples](#debug-examples)
 - [Examples](#examples)
   - [Basic Block Processing](#basic-block-processing)
   - [Padding Incomplete Blocks](#padding-incomplete-blocks)
@@ -96,6 +100,78 @@ Configuration options for the `StreamBlockify` class.
 ### BlockifyError Class
 
 A custom error class that extends the built-in `Error` class to provide specific error messages for the library.
+
+## Debugging
+
+The library includes a powerful built-in debugging system based on the [debug](https://www.npmjs.com/package/debug) package that provides visibility into the stream processing lifecycle.
+
+### Enabling Debug Logs
+
+To enable debug logs, set the `DEBUG` environment variable:
+
+```bash
+# Enable all logs
+DEBUG=STREAM-BLOCKIFY:* node your-app.js
+
+# Enable only error logs
+DEBUG=STREAM-BLOCKIFY:*:error node your-app.js
+
+# Enable info and error logs
+DEBUG=STREAM-BLOCKIFY:*:info,STREAM-BLOCKIFY:*:error node your-app.js
+```
+
+### Log Levels
+
+The library uses the following log levels:
+
+| Level | Description | When Used |
+|-------|-------------|-----------|
+| `error` | Critical errors that affect operation | Exception handling, validation failures |
+| `warn` | Warning conditions | Backpressure detection, resource constraints |
+| `info` | General informational messages | Initialization, block emission, state changes |
+| `debug` | Detailed debugging information | Block operations, data flow |
+| `trace` | Fine-grained tracing information | Byte-level operations, buffer positions |
+
+### Debug Examples
+
+#### Tracking Block Processing
+
+Debug logs provide visibility into block processing:
+
+```
+STREAM-BLOCKIFY:StreamBlockify:info StreamBlockify initialized with blockSize: 1024, emitPartial: true, maxBufferedBlocks: 0 +0ms
+STREAM-BLOCKIFY:StreamBlockify:debug Processing chunk of size 2048 bytes +2ms
+STREAM-BLOCKIFY:StreamBlockify:trace Copied 1024 bytes, position: 1024/1024 +0ms
+STREAM-BLOCKIFY:StreamBlockify:debug Block filled completely, emitting block of size 1024 +1ms
+STREAM-BLOCKIFY:StreamBlockify:trace Buffered blocks count increased to 1 +0ms
+STREAM-BLOCKIFY:StreamBlockify:trace Buffered blocks count decreased to 0 +0ms
+STREAM-BLOCKIFY:StreamBlockify:trace Copied 1024 bytes, position: 1024/1024 +0ms
+STREAM-BLOCKIFY:StreamBlockify:debug Block filled completely, emitting block of size 1024 +0ms
+```
+
+#### Identifying Backpressure
+
+Debug logs help identify when backpressure is occurring:
+
+```log
+STREAM-BLOCKIFY:StreamBlockify:warn Backpressure applied: Buffered blocks limit reached (5) +112ms
+STREAM-BLOCKIFY:StreamBlockify:debug Drain event received, continuing processing +215ms
+```
+
+#### Tracking Final Block Handling
+
+Debug logs show how final partial blocks are handled:
+
+```log
+STREAM-BLOCKIFY:StreamBlockify:info Emitting partial block of size 512 +3ms
+```
+
+or with padding:
+
+```log
+STREAM-BLOCKIFY:StreamBlockify:info Padding final block from position 512 to size 1024 +3ms
+STREAM-BLOCKIFY:StreamBlockify:debug Applying numeric padding with value 0 for 512 bytes +0ms
+```
 
 ## Examples
 

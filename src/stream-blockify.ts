@@ -1,4 +1,5 @@
 import { Transform, TransformCallback } from 'node:stream';
+import { getLogger } from './debug';
 import { BlockifyError } from './errors';
 import { BlockifyOptions } from './types';
 
@@ -32,6 +33,12 @@ import { BlockifyOptions } from './types';
  * @public
  */
 export class StreamBlockify extends Transform {
+	/**
+	 * Logger instance for this class
+	 * @private
+	 */
+	private readonly logger = getLogger('StreamBlockify');
+
 	/**
 	 * The internal buffer used for block allocation.
 	 * @private
@@ -123,6 +130,14 @@ export class StreamBlockify extends Transform {
 		// Allocate buffer - either safely (zeroed) or unsafely (faster)
 		this._buffer = options.safeAllocation ? Buffer.alloc(this._blockSize) : Buffer.allocUnsafe(this._blockSize);
 		this._position = 0;
+
+		this.logger.info(
+			'StreamBlockify initialized with blockSize: %d, emitPartial: %s, maxBufferedBlocks: %d',
+			this._blockSize,
+			this._emitPartial,
+			this._maximumBufferedBlocks
+		);
+		this.logger.debug('Using %s buffer allocation', options.safeAllocation ? 'safe' : 'unsafe');
 	}
 
 	/**
@@ -131,6 +146,7 @@ export class StreamBlockify extends Transform {
 	 * @public
 	 */
 	public reset(): void {
+		this.logger.debug('Resetting stream state');
 		this._position = 0;
 		this._bufferedBlocksCount = 0;
 	}
@@ -165,10 +181,17 @@ export class StreamBlockify extends Transform {
 			const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, encoding);
 			let offset = 0;
 
+			this.logger.debug('Processing chunk of size %d bytes', buffer.length);
+
 			while (offset < buffer.length) {
 				if (this._maximumBufferedBlocks > 0 && this._bufferedBlocksCount >= this._maximumBufferedBlocks) {
 					const remainingChunk = buffer.subarray(offset);
+					this.logger.warn(
+						'Backpressure applied: Buffered blocks limit reached (%d)',
+						this._maximumBufferedBlocks
+					);
 					this.once('drain', () => {
+						this.logger.debug('Drain event received, continuing processing');
 						this._transform(remainingChunk, encoding, callback);
 					});
 					return;
@@ -180,14 +203,19 @@ export class StreamBlockify extends Transform {
 				this._position += bytesToCopy;
 				offset += bytesToCopy;
 
+				this.logger.trace('Copied %d bytes, position: %d/%d', bytesToCopy, this._position, this._blockSize);
+
 				if (this._position === this._blockSize) {
+					this.logger.debug('Block filled completely, emitting block of size %d', this._blockSize);
 					const canContinue = this._emitBlock(this._buffer);
 
 					this._position = 0;
 
 					if (!canContinue && this._maximumBufferedBlocks > 0 && offset < buffer.length) {
 						const remainingChunk = buffer.subarray(offset);
+						this.logger.warn('Cannot continue processing, waiting for drain event');
 						this.once('drain', () => {
+							this.logger.debug('Drain event received, resuming with %d bytes', remainingChunk.length);
 							this._transform(remainingChunk, encoding, callback);
 						});
 						return;
@@ -195,8 +223,10 @@ export class StreamBlockify extends Transform {
 				}
 			}
 
+			this.logger.trace('Finished processing chunk, position: %d/%d', this._position, this._blockSize);
 			callback();
 		} catch (error) {
+			this.logger.error('Error in _transform: %O', error);
 			callback(error instanceof Error ? error : new Error(String(error)));
 		}
 	}
@@ -210,15 +240,24 @@ export class StreamBlockify extends Transform {
 		try {
 			if (this._position > 0) {
 				if (this._emitPartial) {
+					this.logger.info('Emitting partial block of size %d', this._position);
 					this._emitBlock(this._buffer.subarray(0, this._position));
 				} else {
+					this.logger.info(
+						'Padding final block from position %d to size %d',
+						this._position,
+						this._blockSize
+					);
 					this._applyPadding();
 					this._emitBlock(this._buffer);
 				}
+			} else {
+				this.logger.debug('No remaining data to flush');
 			}
 
 			process.nextTick(callback);
 		} catch (error) {
+			this.logger.error('Error in _flush: %O', error);
 			callback(error instanceof Error ? error : new Error(String(error)));
 		}
 	}
@@ -233,13 +272,17 @@ export class StreamBlockify extends Transform {
 	 * @private
 	 */
 	private _applyPadding(): void {
+		const padLength = this._blockSize - this._position;
+
 		if (Buffer.isBuffer(this._padding)) {
+			this.logger.debug('Applying buffer padding of length %d, using cyclic pattern', padLength);
 			let paddingOffset = 0;
 			for (let i = this._position; i < this._blockSize; i++) {
 				this._buffer[i] = this._padding[paddingOffset];
 				paddingOffset = (paddingOffset + 1) % this._padding.length;
 			}
 		} else {
+			this.logger.debug('Applying numeric padding with value %d for %d bytes', this._padding, padLength);
 			this._buffer.fill(this._padding, this._position, this._blockSize);
 		}
 	}
@@ -254,27 +297,47 @@ export class StreamBlockify extends Transform {
 		try {
 			const outputBlock = Buffer.from(block);
 
-			const finalBlock = this._blockTransform ? this._blockTransform(outputBlock) : outputBlock;
+			let finalBlock: Buffer;
+			if (this._blockTransform) {
+				this.logger.debug('Applying block transformation');
+				finalBlock = this._blockTransform(outputBlock);
+				this.logger.trace('Block size after transformation: %d', finalBlock.length);
+			} else {
+				finalBlock = outputBlock;
+			}
 
 			if (this._onBlock) {
+				this.logger.debug('Calling onBlock callback');
 				this._onBlock(finalBlock);
 			}
 
 			this._bufferedBlocksCount++;
+			this.logger.trace('Buffered blocks count increased to %d', this._bufferedBlocksCount);
 
 			const canContinue = this.push(finalBlock);
 
+			if (!canContinue) {
+				this.logger.warn('Push returned false, backpressure indicated');
+			}
+
 			if (!canContinue && this._maximumBufferedBlocks > 0) {
+				this.logger.debug('Scheduling drain event');
 				process.nextTick(() => {
 					this._bufferedBlocksCount--;
+					this.logger.trace(
+						'Buffered blocks count decreased to %d, emitting drain',
+						this._bufferedBlocksCount
+					);
 					this.emit('drain');
 				});
 			} else {
 				this._bufferedBlocksCount--;
+				this.logger.trace('Buffered blocks count decreased to %d', this._bufferedBlocksCount);
 			}
 
 			return canContinue;
 		} catch (error) {
+			this.logger.error('Error in _emitBlock: %O', error);
 			this.emit('error', error instanceof Error ? error : new Error(String(error)));
 			return false;
 		}
