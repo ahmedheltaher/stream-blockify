@@ -1,6 +1,6 @@
 {
 	"name": "stream-blockify",
-	"version": "0.1.1",
+	"version": "0.1.2",
 	"description": "A powerful Node.js library for processing streams in fixed-size blocks",
 	"main": "dist/index.js",
 	"types": "dist/index.d.ts",
