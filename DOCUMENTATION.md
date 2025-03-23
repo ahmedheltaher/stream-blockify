@@ -138,7 +138,7 @@ The library uses the following log levels:
 
 Debug logs provide visibility into block processing:
 
-```
+```log
 STREAM-BLOCKIFY:StreamBlockify:info StreamBlockify initialized with blockSize: 1024, emitPartial: true, maxBufferedBlocks: 0 +0ms
 STREAM-BLOCKIFY:StreamBlockify:debug Processing chunk of size 2048 bytes +2ms
 STREAM-BLOCKIFY:StreamBlockify:trace Copied 1024 bytes, position: 1024/1024 +0ms

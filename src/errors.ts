@@ -1,7 +1,12 @@
 export class BlockifyError extends Error {
 	constructor(message: string, options?: ErrorOptions) {
 		super(message, options);
-		this.name = this.constructor.name;
+
+		Object.defineProperty(this, 'name', {
+			value: 'BlockifyError',
+			enumerable: false,
+			configurable: true
+		});
 
 		if (Error.captureStackTrace) {
 			Error.captureStackTrace(this, this.constructor);

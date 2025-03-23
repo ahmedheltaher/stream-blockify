@@ -1,65 +1,54 @@
 import type { Config } from 'jest';
 
 const config: Config = {
-	// Specify that we're using ts-jest for TypeScript files
+	// Core configuration
 	preset: 'ts-jest',
-
-	// Use Node.js as our testing environment
 	testEnvironment: 'node',
 
-	// Look for test files in these directories
+	// Test discovery
 	roots: ['<rootDir>'],
-
-	// Pattern matching for test files
 	testMatch: ['**/__tests__/**/*.ts', '**/?(*.)+(spec|test).ts'],
 	testPathIgnorePatterns: ['/node_modules/', '/dist/'],
 
-	// Transform TypeScript files with ts-jest
+	// TypeScript processing
 	transform: {
-		'^.+\\.ts$': [
+		'^.+\\.tsx?$': [
 			'ts-jest',
 			{
 				tsconfig: 'tsconfig.jest.json'
 			}
 		]
 	},
-
-	// Module file extensions to handle
 	moduleFileExtensions: ['ts', 'js', 'json', 'node'],
 
 	// Coverage configuration
 	collectCoverage: true,
 	coverageDirectory: 'coverage',
-	coverageReporters: ['text', 'lcov', 'clover', 'html'],
-	collectCoverageFrom: [
-		'src/**/*.ts',
-		'!src/**/*.d.ts',
-		'!src/index.ts',
-		'!src/types.ts',
-		'!src/**/__tests__/**/*.ts'
-	],
+	coverageReporters: ['text', 'lcov', 'html'],
+	collectCoverageFrom: ['src/**/*.ts', '!src/**/*.d.ts', '!src/index.ts', '!src/types.ts', '!**/node_modules/**'],
 
 	// Coverage thresholds
 	coverageThreshold: {
 		global: {
-			branches: 65,
-			functions: 65,
-			lines: 65,
-			statements: 65
+			branches: 80,
+			functions: 80,
+			lines: 80,
+			statements: 80
 		}
 	},
 
-	// Test timeout in milliseconds
+	// Performance and execution
 	testTimeout: 10_000,
+	maxWorkers: '50%',
 
-	// Verbose output
+	// Reporting and debugging
 	verbose: true,
+	clearMocks: true,
+	restoreMocks: true // Automatically restore mocks between tests
 
-	// Clear mock calls and instances between tests
-	clearMocks: true
-
-	// The paths to modules that run some code to configure or set up the testing environment
-	// setupFiles: ['<rootDir>/jest.setup.ts']
+	// Uncomment when needed
+	// setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
+	// bail: 5, // Stop running tests after 5 failures
 };
 
 export default config;
