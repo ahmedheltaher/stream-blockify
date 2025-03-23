@@ -93,7 +93,6 @@ Configuration options for the `StreamBlockify` class.
 | `padding` | `number \| Buffer` | No | `0` | Padding byte or Buffer to use when padding the last block. Only used when `emitPartial` is `false`. |
 | `safeAllocation` | `boolean` | No | `false` | Whether to allocate buffer as zeroed-out. Safer but slower than uninitialized allocation. |
 | `onBlock` | `(block: Buffer) => void` | No | - | Function to call when a complete block is emitted. Called before pushing the block to the stream. |
-| `maximumBufferedBlocks` | `number` | No | `0` | Maximum blocks to buffer in memory. Set to 0 for no limit. |
 | `blockTransform` | `(block: Buffer) => Buffer` | No | - | Transform function to apply to each block before emitting. The returned buffer will be pushed to the stream. |
 | `highWaterMark` | `number` | No | `blockSize * 8` | The maximum number of bytes to store in the internal buffer. |
 
@@ -127,7 +126,7 @@ The library uses the following log levels:
 | Level | Description | When Used |
 |-------|-------------|-----------|
 | `error` | Critical errors that affect operation | Exception handling, validation failures |
-| `warn` | Warning conditions | Backpressure detection, resource constraints |
+| `warn` | Warning conditions |  resource constraints |
 | `info` | General informational messages | Initialization, block emission, state changes |
 | `debug` | Detailed debugging information | Block operations, data flow |
 | `trace` | Fine-grained tracing information | Byte-level operations, buffer positions |
@@ -147,15 +146,6 @@ STREAM-BLOCKIFY:StreamBlockify:trace Buffered blocks count increased to 1 +0ms
 STREAM-BLOCKIFY:StreamBlockify:trace Buffered blocks count decreased to 0 +0ms
 STREAM-BLOCKIFY:StreamBlockify:trace Copied 1024 bytes, position: 1024/1024 +0ms
 STREAM-BLOCKIFY:StreamBlockify:debug Block filled completely, emitting block of size 1024 +0ms
-```
-
-#### Identifying Backpressure
-
-Debug logs help identify when backpressure is occurring:
-
-```log
-STREAM-BLOCKIFY:StreamBlockify:warn Backpressure applied: Buffered blocks limit reached (5) +112ms
-STREAM-BLOCKIFY:StreamBlockify:debug Drain event received, continuing processing +215ms
 ```
 
 #### Tracking Final Block Handling
@@ -255,7 +245,6 @@ import { createReadStream, createWriteStream } from 'node:fs';
 // Process a large file with limited memory usage
 const blockify = new StreamBlockify({
   blockSize: 1024 * 1024, // 1MB blocks
-  maximumBufferedBlocks: 5, // Only buffer up to 5MB at a time
   safeAllocation: true // Use safer allocation (zeroed)
 });
 
@@ -280,7 +269,6 @@ Here are some more examples with advanced usage:
 
 - Setting `safeAllocation` to `false` (default) uses `Buffer.allocUnsafe()` which is faster but leaves buffer memory uninitialized.
 - The `highWaterMark` option controls the stream buffering threshold. The default is `blockSize * 8`.
-- The `maximumBufferedBlocks` option can help control memory usage for large files.
 - When processing very large files, consider increasing the `highWaterMark` to improve throughput.
 - For CPU-intensive `blockTransform` functions, consider keeping block sizes smaller.
 

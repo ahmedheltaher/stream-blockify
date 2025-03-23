@@ -51,21 +51,5 @@ export const benchmarkSets: Array<BenchmarkSet> = [
 				}
 			}
 		]
-	},
-	{
-		name: 'Benchmark Set 5: Backpressure Handling',
-		cases: [
-			{ description: 'No max buffered blocks', blockSize: 64 * 1024 },
-			{
-				description: 'With max 5 buffered blocks',
-				blockSize: 64 * 1024,
-				options: { maximumBufferedBlocks: 5 }
-			},
-			{
-				description: 'With max 1 buffered blocks',
-				blockSize: 64 * 1024,
-				options: { maximumBufferedBlocks: 1 }
-			}
-		]
 	}
 ];

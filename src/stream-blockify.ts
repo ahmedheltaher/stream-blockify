@@ -20,7 +20,6 @@ import { BlockifyOptions } from './types';
  *   onBlock: (block) => {
  *     console.log('New block:', block);
  *   },
- *   maxBufferedBlocks: 10,
  *   blockTransform: (block) => {
  *     // Custom transformation logic
  *     return block;
@@ -82,24 +81,10 @@ export class StreamBlockify extends Transform {
 	private readonly _onBlock?: (block: Buffer) => void;
 
 	/**
-	 * The maximum number of blocks to buffer before applying backpressure.
-	 * If set to 0, there is no limit on the number of buffered blocks.
-	 * @private
-	 * @default 0
-	 */
-	private readonly _maximumBufferedBlocks: number;
-
-	/**
 	 * A function to transform each block before emitting it.
 	 * @private
 	 */
 	private readonly _blockTransform?: (block: Buffer) => Buffer;
-
-	/**
-	 * The current number of buffered blocks.
-	 * @private
-	 */
-	private _bufferedBlocksCount = 0;
 
 	/**
 	 * Constructs a new instance of the StreamBlockify class.
@@ -124,7 +109,6 @@ export class StreamBlockify extends Transform {
 		this._emitPartial = options.emitPartial !== false;
 		this._padding = options.padding !== undefined ? options.padding : 0;
 		this._onBlock = options.onBlock;
-		this._maximumBufferedBlocks = options.maximumBufferedBlocks || 0;
 		this._blockTransform = options.blockTransform;
 
 		// Allocate buffer - either safely (zeroed) or unsafely (faster)
@@ -132,23 +116,21 @@ export class StreamBlockify extends Transform {
 		this._position = 0;
 
 		this.logger.info(
-			'StreamBlockify initialized with blockSize: %d, emitPartial: %s, maxBufferedBlocks: %d',
+			'StreamBlockify initialized with blockSize: %d, emitPartial: %s',
 			this._blockSize,
-			this._emitPartial,
-			this._maximumBufferedBlocks
+			this._emitPartial
 		);
 		this.logger.debug('Using %s buffer allocation', options.safeAllocation ? 'safe' : 'unsafe');
 	}
 
 	/**
 	 * Resets the internal state of the stream.
-	 * This method sets the position to the beginning and clears the count of buffered blocks.
+	 * This method sets the position to the beginning.
 	 * @public
 	 */
 	public reset(): void {
 		this.logger.debug('Resetting stream state');
 		this._position = 0;
-		this._bufferedBlocksCount = 0;
 	}
 
 	/**
@@ -158,15 +140,6 @@ export class StreamBlockify extends Transform {
 	 */
 	public getPosition(): number {
 		return this._position;
-	}
-
-	/**
-	 * Retrieves the count of buffered blocks.
-	 * @returns The number of buffered blocks.
-	 * @public
-	 */
-	public getBufferedBlocksCount(): number {
-		return this._bufferedBlocksCount;
 	}
 
 	/**
@@ -184,19 +157,6 @@ export class StreamBlockify extends Transform {
 			this.logger.debug('Processing chunk of size %d bytes', buffer.length);
 
 			while (offset < buffer.length) {
-				if (this._maximumBufferedBlocks > 0 && this._bufferedBlocksCount >= this._maximumBufferedBlocks) {
-					const remainingChunk = buffer.subarray(offset);
-					this.logger.warn(
-						'Backpressure applied: Buffered blocks limit reached (%d)',
-						this._maximumBufferedBlocks
-					);
-					this.once('drain', () => {
-						this.logger.debug('Drain event received, continuing processing');
-						this._transform(remainingChunk, encoding, callback);
-					});
-					return;
-				}
-
 				const bytesToCopy = Math.min(this._blockSize - this._position, buffer.length - offset);
 				buffer.copy(this._buffer, this._position, offset, offset + bytesToCopy);
 
@@ -207,19 +167,8 @@ export class StreamBlockify extends Transform {
 
 				if (this._position === this._blockSize) {
 					this.logger.debug('Block filled completely, emitting block of size %d', this._blockSize);
-					const canContinue = this._emitBlock(this._buffer);
-
+					this._emitBlock(this._buffer);
 					this._position = 0;
-
-					if (!canContinue && this._maximumBufferedBlocks > 0 && offset < buffer.length) {
-						const remainingChunk = buffer.subarray(offset);
-						this.logger.warn('Cannot continue processing, waiting for drain event');
-						this.once('drain', () => {
-							this.logger.debug('Drain event received, resuming with %d bytes', remainingChunk.length);
-							this._transform(remainingChunk, encoding, callback);
-						});
-						return;
-					}
 				}
 			}
 
@@ -290,10 +239,9 @@ export class StreamBlockify extends Transform {
 	/**
 	 * Emits a block of data to the stream.
 	 * @param block - The buffer containing the block of data to emit.
-	 * @returns Whether the stream can consume more data.
 	 * @private
 	 */
-	private _emitBlock(block: Buffer): boolean {
+	private _emitBlock(block: Buffer): void {
 		try {
 			const outputBlock = Buffer.from(block);
 
@@ -311,35 +259,10 @@ export class StreamBlockify extends Transform {
 				this._onBlock(finalBlock);
 			}
 
-			this._bufferedBlocksCount++;
-			this.logger.trace('Buffered blocks count increased to %d', this._bufferedBlocksCount);
-
-			const canContinue = this.push(finalBlock);
-
-			if (!canContinue) {
-				this.logger.warn('Push returned false, backpressure indicated');
-			}
-
-			if (!canContinue && this._maximumBufferedBlocks > 0) {
-				this.logger.debug('Scheduling drain event');
-				process.nextTick(() => {
-					this._bufferedBlocksCount--;
-					this.logger.trace(
-						'Buffered blocks count decreased to %d, emitting drain',
-						this._bufferedBlocksCount
-					);
-					this.emit('drain');
-				});
-			} else {
-				this._bufferedBlocksCount--;
-				this.logger.trace('Buffered blocks count decreased to %d', this._bufferedBlocksCount);
-			}
-
-			return canContinue;
+			this.push(finalBlock);
 		} catch (error) {
 			this.logger.error('Error in _emitBlock: %O', error);
 			this.emit('error', error instanceof Error ? error : new Error(String(error)));
-			return false;
 		}
 	}
 }

@@ -94,10 +94,7 @@ describe('StreamBlockify Integration and Performance Tests', () => {
 				}
 			});
 
-			const blockify = new StreamBlockify({
-				blockSize,
-				maximumBufferedBlocks: 4
-			});
+			const blockify = new StreamBlockify({ blockSize });
 
 			await pipelineAsync(source, blockify, slowDestination);
 		}, 15_000);

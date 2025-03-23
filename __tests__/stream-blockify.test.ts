@@ -273,55 +273,5 @@ describe('StreamBlockify', () => {
 			expect(blocks[2].toString()).toBe('89AB');
 			expect(blocks[3].toString()).toBe('CDEF');
 		});
-
-		it('should respect maximumBufferedBlocks option', async () => {
-			const largeBuffer = Buffer.alloc(1000, 'A');
-			const source = createReadableStream([largeBuffer]);
-
-			const blockify = new StreamBlockify({
-				blockSize: 10,
-				maximumBufferedBlocks: 2
-			});
-
-			let drainEventTriggered = false;
-			let blockCount = 0;
-
-			blockify.on('drain', () => {
-				drainEventTriggered = true;
-			});
-
-			blockify.pause();
-
-			source.pipe(blockify);
-
-			const collectPromise = new Promise<Buffer[]>(resolve => {
-				const blocks: Buffer[] = [];
-
-				blockify.on('data', chunk => {
-					blocks.push(chunk);
-					blockCount++;
-
-					if (blockCount === 3) {
-						blockify.pause();
-						setTimeout(() => {
-							blockify.resume();
-						}, 50);
-					}
-				});
-
-				blockify.on('end', () => {
-					resolve(blocks);
-				});
-			});
-
-			setTimeout(() => {
-				blockify.resume();
-			}, 20);
-
-			const blocks = await collectPromise;
-
-			expect(blocks.length).toBe(100);
-			expect(drainEventTriggered).toBe(true);
-		});
 	});
 });

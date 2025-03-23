@@ -15,7 +15,6 @@ A powerful and flexible Node.js library for processing streams in fixed-size blo
 - Execute callbacks for each completed block
 - Implement custom block transformations
 - Manage memory usage with block buffering limits
-- Apply backpressure when buffer limits are reached
 - Safe or fast buffer allocation options
 
 ## Use Cases

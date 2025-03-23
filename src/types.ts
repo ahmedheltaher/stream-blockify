@@ -40,13 +40,6 @@ export interface BlockifyOptions extends TransformOptions {
 	onBlock?: (block: Buffer) => void;
 
 	/**
-	 * Maximum blocks to buffer in memory.
-	 * Set to 0 for no limit.
-	 * @default 0
-	 */
-	maximumBufferedBlocks?: number;
-
-	/**
 	 * Transform function to apply to each block before emitting.
 	 * The returned buffer will be pushed to the stream.
 	 */
