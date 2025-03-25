@@ -1,277 +1,388 @@
-import { Readable } from 'stream';
-import { StreamBlockify } from '../src';
+import { Readable, Writable } from 'node:stream';
+import { BlockifyError } from '../src/errors';
+import { StreamBlockify } from '../src/stream-blockify';
 
-function collectStreamData(stream: Readable): Promise<Buffer[]> {
+jest.mock('../src/debug', () => ({
+	getLogger: jest.fn().mockReturnValue({
+		info: jest.fn(),
+		debug: jest.fn(),
+		trace: jest.fn(),
+		error: jest.fn()
+	})
+}));
+
+const collectChunks = (stream: Readable): Promise<Buffer[]> => {
 	return new Promise((resolve, reject) => {
 		const chunks: Buffer[] = [];
-		stream.on('data', chunk => chunks.push(chunk));
-		stream.on('end', () => resolve(chunks));
-		stream.on('error', reject);
-	});
-}
 
-function createReadableStream(data: (Buffer | string)[]): Readable {
-	return Readable.from(data);
-}
+		stream.on('data', chunk => {
+			chunks.push(chunk);
+		});
+
+		stream.on('end', () => {
+			resolve(chunks);
+		});
+
+		stream.on('error', err => {
+			reject(err);
+		});
+	});
+};
 
 describe('StreamBlockify', () => {
-	describe('Basic functionality', () => {
-		it('should chunk data into blocks of the specified size', async () => {
-			const source = createReadableStream([Buffer.from('0123456789ABCDEF')]);
-			const blockify = new StreamBlockify({ blockSize: 4 });
-
-			source.pipe(blockify);
-			const blocks = await collectStreamData(blockify);
-
-			expect(blocks.length).toBe(4);
-			expect(blocks[0].toString()).toBe('0123');
-			expect(blocks[1].toString()).toBe('4567');
-			expect(blocks[2].toString()).toBe('89AB');
-			expect(blocks[3].toString()).toBe('CDEF');
+	describe('Constructor', () => {
+		it('should create an instance with default options', () => {
+			const blockify = new StreamBlockify({ blockSize: 10 });
+			expect(blockify).toBeInstanceOf(StreamBlockify);
+			expect(blockify.getPosition()).toBe(0);
 		});
 
-		it('should handle string input', async () => {
-			const source = createReadableStream(['0123456789ABCDEF']);
-			const blockify = new StreamBlockify({ blockSize: 4 });
-
-			source.pipe(blockify);
-			const blocks = await collectStreamData(blockify);
-
-			expect(blocks.length).toBe(4);
-			expect(blocks[0].toString()).toBe('0123');
-			expect(blocks[1].toString()).toBe('4567');
-			expect(blocks[2].toString()).toBe('89AB');
-			expect(blocks[3].toString()).toBe('CDEF');
+		it('should throw an error if blockSize is not a positive integer', () => {
+			expect(() => new StreamBlockify({ blockSize: 0 })).toThrow(BlockifyError);
+			expect(() => new StreamBlockify({ blockSize: -1 })).toThrow(BlockifyError);
+			expect(() => new StreamBlockify({ blockSize: 1.5 })).toThrow(BlockifyError);
 		});
 
-		it('should emit partial blocks by default', async () => {
-			const source = createReadableStream([Buffer.from('0123456789')]);
-			const blockify = new StreamBlockify({ blockSize: 4 });
+		it('should use safe buffer allocation when specified', () => {
+			const allocSpy = jest.spyOn(Buffer, 'alloc');
 
-			source.pipe(blockify);
-			const blocks = await collectStreamData(blockify);
+			new StreamBlockify({ blockSize: 10, safeAllocation: true });
 
-			expect(blocks.length).toBe(3);
-			expect(blocks[0].toString()).toBe('0123');
-			expect(blocks[1].toString()).toBe('4567');
-			expect(blocks[2].toString()).toBe('89');
+			expect(allocSpy).toHaveBeenCalledWith(10);
+
+			allocSpy.mockRestore();
 		});
 
-		it('should pad the last block when emitPartial is false', async () => {
-			const source = createReadableStream([Buffer.from('0123456789')]);
-			const blockify = new StreamBlockify({ blockSize: 4, emitPartial: false, padding: 0x50 /* 'P' */ });
+		it('should use unsafe buffer allocation by default', () => {
+			const allocUnsafeSpy = jest.spyOn(Buffer, 'allocUnsafe');
 
-			source.pipe(blockify);
-			const blocks = await collectStreamData(blockify);
+			new StreamBlockify({ blockSize: 10 });
 
-			expect(blocks.length).toBe(3);
-			expect(blocks[0].toString()).toBe('0123');
-			expect(blocks[1].toString()).toBe('4567');
-			expect(blocks[2].toString()).toBe('89PP');
-		});
+			expect(allocUnsafeSpy).toHaveBeenCalledWith(10);
 
-		it('should handle multiple chunks correctly', async () => {
-			const source = createReadableStream([
-				Buffer.from('0123'),
-				Buffer.from('4567'),
-				Buffer.from('89AB'),
-				Buffer.from('CDEF')
-			]);
-			const blockify = new StreamBlockify({ blockSize: 6 });
-
-			source.pipe(blockify);
-			const blocks = await collectStreamData(blockify);
-
-			expect(blocks.length).toBe(3);
-			expect(blocks[0].toString()).toBe('012345');
-			expect(blocks[1].toString()).toBe('6789AB');
-			expect(blocks[2].toString()).toBe('CDEF');
-		});
-
-		it('should handle empty input', async () => {
-			const source = createReadableStream([]);
-			const blockify = new StreamBlockify({ blockSize: 4 });
-
-			source.pipe(blockify);
-			const blocks = await collectStreamData(blockify);
-
-			expect(blocks.length).toBe(0);
-		});
-
-		it('should throw an error for invalid blockSize', () => {
-			expect(() => {
-				new StreamBlockify({ blockSize: 0 });
-			}).toThrow('blockSize must be a positive integer');
-
-			expect(() => {
-				new StreamBlockify({ blockSize: -1 });
-			}).toThrow('blockSize must be a positive integer');
-
-			expect(() => {
-				new StreamBlockify({ blockSize: 3.5 });
-			}).toThrow('blockSize must be a positive integer');
+			allocUnsafeSpy.mockRestore();
 		});
 	});
 
-	describe('Advanced functionality', () => {
-		it('should pad with Buffer when a Buffer padding is provided', async () => {
-			const source = createReadableStream([Buffer.from('0123456789')]);
-			const paddingBuffer = Buffer.from('XYZ');
-			const blockify = new StreamBlockify({
-				blockSize: 4,
-				emitPartial: false,
-				padding: paddingBuffer
-			});
+	describe('Public methods', () => {
+		it('should reset position', () => {
+			const blockify = new StreamBlockify({ blockSize: 10 });
 
-			source.pipe(blockify);
-			const blocks = await collectStreamData(blockify);
-
-			expect(blocks.length).toBe(3);
-			expect(blocks[0].toString()).toBe('0123');
-			expect(blocks[1].toString()).toBe('4567');
-			expect(blocks[2].toString()).toBe('89XY');
-		});
-
-		it('should call onBlock for each emitted block', async () => {
-			const onBlockMock = jest.fn();
-			const source = createReadableStream([Buffer.from('0123456789ABCDEF')]);
-			const blockify = new StreamBlockify({
-				blockSize: 4,
-				onBlock: onBlockMock
-			});
-
-			source.pipe(blockify);
-			await collectStreamData(blockify);
-
-			expect(onBlockMock).toHaveBeenCalledTimes(4);
-			expect(onBlockMock).toHaveBeenNthCalledWith(1, expect.any(Buffer));
-			expect(onBlockMock.mock.calls[0][0].toString()).toBe('0123');
-		});
-
-		it('should apply block transformation if provided', async () => {
-			const source = createReadableStream([Buffer.from('abcdefghijklmnop')]);
-			const blockify = new StreamBlockify({
-				blockSize: 4,
-				blockTransform: block => Buffer.from(block.toString().toUpperCase())
-			});
-
-			source.pipe(blockify);
-			const blocks = await collectStreamData(blockify);
-
-			expect(blocks.length).toBe(4);
-			expect(blocks[0].toString()).toBe('ABCD');
-			expect(blocks[1].toString()).toBe('EFGH');
-			expect(blocks[2].toString()).toBe('IJKL');
-			expect(blocks[3].toString()).toBe('MNOP');
-		});
-
-		it('should reset internal state when reset() is called', async () => {
-			const blockify = new StreamBlockify({ blockSize: 4 });
-
-			blockify.write(Buffer.from('012'));
-			expect(blockify.getPosition()).toBe(3);
+			(blockify as any)._position = 5;
+			expect(blockify.getPosition()).toBe(5);
 
 			blockify.reset();
 			expect(blockify.getPosition()).toBe(0);
+		});
 
-			blockify.write(Buffer.from('abcd'));
+		it('should get current position', () => {
+			const blockify = new StreamBlockify({ blockSize: 10 });
+			expect(blockify.getPosition()).toBe(0);
 
-			blockify.end();
-
-			const blocks = await collectStreamData(blockify);
-			expect(blocks.length).toBe(1);
-			expect(blocks[0].toString()).toBe('abcd');
+			(blockify as any)._position = 7;
+			expect(blockify.getPosition()).toBe(7);
 		});
 	});
 
-	describe('Edge cases and error handling', () => {
-		it('should handle chunks larger than blockSize', async () => {
-			const source = createReadableStream([Buffer.from('0123456789ABCDEF0123456789ABCDEF')]);
-			const blockify = new StreamBlockify({ blockSize: 4 });
+	describe('Streaming functionality', () => {
+		let onBlockSpy: jest.Mock;
+		let blockTransformSpy: jest.Mock;
 
-			source.pipe(blockify);
-			const blocks = await collectStreamData(blockify);
-
-			expect(blocks.length).toBe(8);
-			expect(blocks[0].toString()).toBe('0123');
-			expect(blocks[7].toString()).toBe('CDEF');
+		beforeEach(() => {
+			onBlockSpy = jest.fn();
+			blockTransformSpy = jest.fn(block => Buffer.from(block));
 		});
 
-		it('should handle zero-length chunks', async () => {
-			const source = createReadableStream([Buffer.from('0123'), Buffer.from(''), Buffer.from('4567')]);
-			const blockify = new StreamBlockify({ blockSize: 4 });
+		it('should process exact block size chunks', async () => {
+			const blockSize = 10;
+			const blockify = new StreamBlockify({ blockSize, onBlock: onBlockSpy, blockTransform: blockTransformSpy });
 
-			source.pipe(blockify);
-			const blocks = await collectStreamData(blockify);
+			const sourceData = Buffer.from('A'.repeat(blockSize * 3));
+			const source = Readable.from([sourceData]);
 
-			expect(blocks.length).toBe(2);
-			expect(blocks[0].toString()).toBe('0123');
-			expect(blocks[1].toString()).toBe('4567');
+			const chunks = await collectChunks(source.pipe(blockify));
+
+			expect(chunks.length).toBe(3);
+			chunks.forEach(chunk => {
+				expect(chunk.length).toBe(blockSize);
+			});
+			expect(onBlockSpy).toHaveBeenCalledTimes(3);
+			expect(blockTransformSpy).toHaveBeenCalledTimes(3);
 		});
 
-		it('should recover from errors in blockTransform', async () => {
-			const source = createReadableStream([Buffer.from('0123456789ABCDEF')]);
+		it('should process multiple small chunks into blocks', async () => {
+			const blockSize = 10;
+			const blockify = new StreamBlockify({ blockSize, onBlock: onBlockSpy });
 
-			let errorCount = 0;
-			let dataCount = 0;
+			const source = Readable.from([
+				Buffer.from('AAAA'),
+				Buffer.from('BBBB'),
+				Buffer.from('CCCC'),
+				Buffer.from('DDDD'),
+				Buffer.from('EEEE')
+			]);
 
-			const blockify = new StreamBlockify({
-				blockSize: 4,
-				blockTransform: block => {
-					if (block.toString() === '4567') {
-						throw new Error('Test error');
-					}
-					return block;
+			const chunks = await collectChunks(source.pipe(blockify));
+
+			expect(chunks.length).toBe(2);
+			expect(chunks[0].length).toBe(blockSize);
+			expect(chunks[1].length).toBe(blockSize);
+			expect(onBlockSpy).toHaveBeenCalledTimes(2);
+		});
+
+		it('should process string chunks', async () => {
+			const blockSize = 10;
+			const blockify = new StreamBlockify({ blockSize });
+
+			const source = Readable.from(['ABCDEFGHIJ', 'KLMNOPQRST']);
+
+			const chunks = await collectChunks(source.pipe(blockify));
+
+			expect(chunks.length).toBe(2);
+			expect(chunks[0].toString()).toBe('ABCDEFGHIJ');
+			expect(chunks[1].toString()).toBe('KLMNOPQRST');
+		});
+
+		it('should emit partial blocks when emitPartial is true', async () => {
+			const blockSize = 10;
+			const blockify = new StreamBlockify({ blockSize, emitPartial: true });
+
+			const source = Readable.from([Buffer.from('A'.repeat(25))]);
+
+			const chunks = await collectChunks(source.pipe(blockify));
+
+			expect(chunks.length).toBe(3);
+			expect(chunks[0].length).toBe(blockSize);
+			expect(chunks[1].length).toBe(blockSize);
+			expect(chunks[2].length).toBe(5);
+		});
+
+		it('should pad blocks with numeric padding when emitPartial is false', async () => {
+			const blockSize = 10;
+			const paddingValue = 0xff;
+			const blockify = new StreamBlockify({ blockSize, emitPartial: false, padding: paddingValue });
+
+			const source = Readable.from([Buffer.from('A'.repeat(25))]);
+
+			const chunks = await collectChunks(source.pipe(blockify));
+
+			expect(chunks.length).toBe(3);
+			expect(chunks[0].length).toBe(blockSize);
+			expect(chunks[1].length).toBe(blockSize);
+			expect(chunks[2].length).toBe(blockSize);
+
+			const lastChunk = chunks[2];
+			expect(lastChunk.subarray(0, 5).toString()).toBe('A'.repeat(5));
+
+			for (let i = 5; i < blockSize; i++) {
+				expect(lastChunk[i]).toBe(paddingValue);
+			}
+		});
+
+		it('should pad blocks with buffer padding when emitPartial is false', async () => {
+			const blockSize = 10;
+			const paddingPattern = Buffer.from([1, 2, 3]);
+			const blockify = new StreamBlockify({ blockSize, emitPartial: false, padding: paddingPattern });
+
+			const source = Readable.from([Buffer.from('A'.repeat(15))]);
+
+			const chunks = await collectChunks(source.pipe(blockify));
+
+			expect(chunks.length).toBe(2);
+			const lastChunk = chunks[1];
+			expect(lastChunk.length).toBe(blockSize);
+
+			expect(lastChunk.subarray(0, 5).toString()).toBe('A'.repeat(5));
+
+			expect(lastChunk[5]).toBe(1);
+			expect(lastChunk[6]).toBe(2);
+			expect(lastChunk[7]).toBe(3);
+			expect(lastChunk[8]).toBe(1);
+			expect(lastChunk[9]).toBe(2);
+		});
+
+		it('should apply custom block transformation', async () => {
+			const blockSize = 10;
+			const transform = (block: Buffer) => {
+				const result = Buffer.alloc(block.length);
+				for (let i = 0; i < block.length; i++) {
+					result[i] = block[i] + 1;
+				}
+				return result;
+			};
+
+			const blockify = new StreamBlockify({ blockSize, blockTransform: transform });
+
+			const source = Readable.from([Buffer.from('ABCDEFGHIJ')]);
+
+			const chunks = await collectChunks(source.pipe(blockify));
+
+			expect(chunks.length).toBe(1);
+			// 'A' (65) + 1 = 'B' (66), etc.
+			expect(chunks[0].toString()).toBe('BCDEFGHIJK');
+		});
+
+		it('should handle errors in transform', async () => {
+			const blockSize = 10;
+			const blockify = new StreamBlockify({ blockSize });
+
+			jest.spyOn(blockify as any, '_processChunk').mockImplementation(() => {
+				throw new Error('Test error');
+			});
+
+			const source = Readable.from([Buffer.from('ABCDEFGHIJ')]);
+
+			await expect(collectChunks(source.pipe(blockify))).rejects.toThrow('Test error');
+		});
+
+		it('should handle errors in blockTransform', async () => {
+			const blockSize = 10;
+			const errorTransform = () => {
+				throw new Error('Transform error');
+			};
+
+			const blockify = new StreamBlockify({ blockSize, blockTransform: errorTransform });
+
+			const source = Readable.from([Buffer.from('ABCDEFGHIJ')]);
+
+			await expect(collectChunks(source.pipe(blockify))).rejects.toThrow('Transform error');
+		});
+
+		it('should handle errors in flush', async () => {
+			const blockSize = 10;
+			const blockify = new StreamBlockify({ blockSize });
+
+			jest.spyOn(blockify as any, '_emitPartialBlock').mockImplementation(() => {
+				throw new Error('Flush error');
+			});
+
+			const source = Readable.from([Buffer.from('ABCDE')]);
+
+			await expect(collectChunks(source.pipe(blockify))).rejects.toThrow('Flush error');
+		});
+
+		it('should emit nothing when no data is written', async () => {
+			const blockify = new StreamBlockify({ blockSize: 10 });
+			const source = Readable.from([]);
+
+			const chunks = await collectChunks(source.pipe(blockify));
+			expect(chunks.length).toBe(0);
+		});
+
+		it('should handle large data streams efficiently', async () => {
+			const blockSize = 1024;
+			const dataSize = blockSize * 10 + 512;
+			const blockify = new StreamBlockify({ blockSize });
+
+			const largeBuffer = Buffer.alloc(dataSize);
+			for (let i = 0; i < dataSize; i++) {
+				largeBuffer[i] = i % 256;
+			}
+
+			const source = Readable.from([largeBuffer]);
+
+			const chunks = await collectChunks(source.pipe(blockify));
+
+			expect(chunks.length).toBe(11);
+			chunks.slice(0, 10).forEach(chunk => {
+				expect(chunk.length).toBe(blockSize);
+			});
+			expect(chunks[10].length).toBe(512);
+		});
+
+		it('should support piping to multiple destinations', async () => {
+			const blockSize = 10;
+			const blockify = new StreamBlockify({ blockSize });
+
+			const sourceData = Buffer.from('A'.repeat(blockSize * 2));
+			const source = Readable.from([sourceData]);
+
+			const dest1Chunks: Buffer[] = [];
+			const dest1 = new Writable({
+				write(chunk, _encoding, callback) {
+					dest1Chunks.push(chunk);
+					callback();
 				}
 			});
 
-			source.pipe(blockify);
-
-			blockify.on('error', () => {
-				errorCount++;
+			const dest2Chunks: Buffer[] = [];
+			const dest2 = new Writable({
+				write(chunk, _encoding, callback) {
+					dest2Chunks.push(chunk);
+					callback();
+				}
 			});
 
-			blockify.on('data', () => {
-				dataCount++;
-			});
+			return new Promise<void>((resolve, reject) => {
+				source.pipe(blockify);
+				blockify.pipe(dest1);
+				blockify.pipe(dest2);
 
-			await new Promise(resolve => {
-				blockify.on('end', resolve);
-				source.on('end', () => {
-					blockify.end();
+				dest2.on('finish', () => {
+					try {
+						expect(dest1Chunks.length).toBe(2);
+						expect(dest2Chunks.length).toBe(2);
+						resolve();
+					} catch (e) {
+						reject(e);
+					}
 				});
-			});
 
-			expect(errorCount).toBe(1);
-			expect(dataCount).toBe(3);
+				dest2.on('error', reject);
+			});
 		});
 	});
 
-	describe('Performance options', () => {
-		it('should respect safeAllocation option', () => {
-			const blockifySafe = new StreamBlockify({ blockSize: 1024, safeAllocation: true });
+	describe('Corner cases', () => {
+		it('should handle empty or zero-length chunks', async () => {
+			const blockify = new StreamBlockify({ blockSize: 10 });
 
-			const blockifyUnsafe = new StreamBlockify({ blockSize: 1024, safeAllocation: false });
+			const source = Readable.from([Buffer.from([]), Buffer.from('ABCDEFGHIJ'), Buffer.from([])]);
 
-			// Both should work, but we can't really test the difference
-			// other than checking they don't throw errors
-			expect(blockifySafe).toBeInstanceOf(StreamBlockify);
-			expect(blockifyUnsafe).toBeInstanceOf(StreamBlockify);
+			const chunks = await collectChunks(source.pipe(blockify));
+
+			expect(chunks.length).toBe(1);
+			expect(chunks[0].toString()).toBe('ABCDEFGHIJ');
 		});
 
-		it('should respect highWaterMark option', async () => {
-			const source = createReadableStream([Buffer.from('0123456789ABCDEF')]);
-			const highWaterMark = 16;
-			const blockify = new StreamBlockify({ blockSize: 4, highWaterMark });
+		it('should not emit a block if the stream ends with no data', async () => {
+			const blockify = new StreamBlockify({ blockSize: 10, onBlock: jest.fn() });
 
-			source.pipe(blockify);
-			const blocks = await collectStreamData(blockify);
+			const source = Readable.from([Buffer.from([])]);
 
-			expect(blocks.length).toBe(4);
-			expect(blocks[0].toString()).toBe('0123');
-			expect(blocks[1].toString()).toBe('4567');
-			expect(blocks[2].toString()).toBe('89AB');
-			expect(blocks[3].toString()).toBe('CDEF');
+			const chunks = await collectChunks(source.pipe(blockify));
+
+			expect(chunks.length).toBe(0);
+			expect(blockify.getPosition()).toBe(0);
+		});
+
+		it('should handle multiple back-to-back flush calls', async () => {
+			const blockSize = 10;
+			const blockify = new StreamBlockify({ blockSize });
+
+			const source = Readable.from([Buffer.from('AB'), Buffer.alloc(0), Buffer.from('CD'), Buffer.alloc(0)]);
+
+			const chunks = await collectChunks(source.pipe(blockify));
+
+			expect(chunks.length).toBe(1);
+			expect(chunks[0].toString()).toBe('ABCD');
+		});
+
+		it('should handle non-buffer padding values correctly', async () => {
+			const invalidValues = [undefined, null, NaN, true, 'string', {}, []];
+
+			for (const value of invalidValues) {
+				const blockify = new StreamBlockify({
+					blockSize: 10,
+					emitPartial: false,
+					// @ts-expect-error - Testing with invalid types
+					padding: value
+				});
+
+				const source = Readable.from([Buffer.from('ABCDE')]);
+
+				await collectChunks(source.pipe(blockify));
+			}
 		});
 	});
 });

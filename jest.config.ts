@@ -25,15 +25,22 @@ const config: Config = {
 	collectCoverage: true,
 	coverageDirectory: 'coverage',
 	coverageReporters: ['text', 'lcov', 'html'],
-	collectCoverageFrom: ['src/**/*.ts', '!src/**/*.d.ts', '!src/index.ts', '!src/types.ts', '!**/node_modules/**'],
+	collectCoverageFrom: [
+		'src/**/*.ts',
+		'!src/**/*.d.ts',
+		'!src/index.ts',
+		'!src/types.ts',
+		'!src/debug.ts',
+		'!**/node_modules/**'
+	],
 
 	// Coverage thresholds
 	coverageThreshold: {
 		global: {
-			branches: 80,
-			functions: 80,
-			lines: 80,
-			statements: 80
+			branches: 85,
+			functions: 85,
+			lines: 85,
+			statements: 85
 		}
 	},
 
@@ -44,11 +51,9 @@ const config: Config = {
 	// Reporting and debugging
 	verbose: true,
 	clearMocks: true,
-	restoreMocks: true // Automatically restore mocks between tests
+	restoreMocks: true,
 
-	// Uncomment when needed
-	// setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
-	// bail: 5, // Stop running tests after 5 failures
+	bail: 5 // Stop running tests after 5 failures
 };
 
 export default config;

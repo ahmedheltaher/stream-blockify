@@ -152,31 +152,38 @@ export class StreamBlockify extends Transform {
 	_transform(chunk: Buffer | string, encoding: BufferEncoding, callback: TransformCallback): void {
 		try {
 			const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, encoding);
-			let offset = 0;
-
 			this.logger.debug('Processing chunk of size %d bytes', buffer.length);
-
-			while (offset < buffer.length) {
-				const bytesToCopy = Math.min(this._blockSize - this._position, buffer.length - offset);
-				buffer.copy(this._buffer, this._position, offset, offset + bytesToCopy);
-
-				this._position += bytesToCopy;
-				offset += bytesToCopy;
-
-				this.logger.trace('Copied %d bytes, position: %d/%d', bytesToCopy, this._position, this._blockSize);
-
-				if (this._position === this._blockSize) {
-					this.logger.debug('Block filled completely, emitting block of size %d', this._blockSize);
-					this._emitBlock(this._buffer);
-					this._position = 0;
-				}
-			}
-
+			this._processChunk(buffer);
 			this.logger.trace('Finished processing chunk, position: %d/%d', this._position, this._blockSize);
 			callback();
 		} catch (error) {
 			this.logger.error('Error in _transform: %O', error);
 			callback(error instanceof Error ? error : new Error(String(error)));
+		}
+	}
+
+	/**
+	 * Processes the input buffer and emits blocks as needed.
+	 * @param buffer - The input buffer to process.
+	 * @private
+	 */
+	private _processChunk(buffer: Buffer): void {
+		let offset = 0;
+
+		while (offset < buffer.length) {
+			const bytesToCopy = Math.min(this._blockSize - this._position, buffer.length - offset);
+			buffer.copy(this._buffer, this._position, offset, offset + bytesToCopy);
+
+			this._position += bytesToCopy;
+			offset += bytesToCopy;
+
+			this.logger.trace('Copied %d bytes, position: %d/%d', bytesToCopy, this._position, this._blockSize);
+
+			if (this._position === this._blockSize) {
+				this.logger.debug('Block filled completely, emitting block of size %d', this._blockSize);
+				this._emitBlock(this._buffer);
+				this._position = 0;
+			}
 		}
 	}
 
@@ -187,28 +194,47 @@ export class StreamBlockify extends Transform {
 	 */
 	_flush(callback: TransformCallback): void {
 		try {
-			if (this._position > 0) {
-				if (this._emitPartial) {
-					this.logger.info('Emitting partial block of size %d', this._position);
-					this._emitBlock(this._buffer.subarray(0, this._position));
-				} else {
-					this.logger.info(
-						'Padding final block from position %d to size %d',
-						this._position,
-						this._blockSize
-					);
-					this._applyPadding();
-					this._emitBlock(this._buffer);
-				}
-			} else {
+			if (this._position <= 0) {
 				this.logger.debug('No remaining data to flush');
+			} else if (this._emitPartial) {
+				this._emitPartialBlock();
+			} else {
+				this._emitPaddedBlock();
 			}
-
 			process.nextTick(callback);
 		} catch (error) {
-			this.logger.error('Error in _flush: %O', error);
-			callback(error instanceof Error ? error : new Error(String(error)));
+			this._handleFlushError(error, callback);
 		}
+	}
+
+	/**
+	 * Emits a partial block if there is remaining data in the buffer.
+	 * @private
+	 */
+	private _emitPartialBlock(): void {
+		this.logger.info('Emitting partial block of size %d', this._position);
+		this._emitBlock(this._buffer.subarray(0, this._position));
+	}
+
+	/**
+	 * Pads and emits the final block if there is remaining data in the buffer.
+	 * @private
+	 */
+	private _emitPaddedBlock(): void {
+		this.logger.info('Padding final block from position %d to size %d', this._position, this._blockSize);
+		this._applyPadding();
+		this._emitBlock(this._buffer);
+	}
+
+	/**
+	 * Handles errors that occur during the flush operation.
+	 * @param error - The error to handle.
+	 * @param callback - The callback to invoke with the error.
+	 * @private
+	 */
+	private _handleFlushError(error: unknown, callback: TransformCallback): void {
+		this.logger.error('Error in _flush: %O', error);
+		callback(error instanceof Error ? error : new Error(String(error)));
 	}
 
 	/**
@@ -230,10 +256,10 @@ export class StreamBlockify extends Transform {
 				this._buffer[i] = this._padding[paddingOffset];
 				paddingOffset = (paddingOffset + 1) % this._padding.length;
 			}
-		} else {
-			this.logger.debug('Applying numeric padding with value %d for %d bytes', this._padding, padLength);
-			this._buffer.fill(this._padding, this._position, this._blockSize);
+			return;
 		}
+		this.logger.debug('Applying numeric padding with value %d for %d bytes', this._padding, padLength);
+		this._buffer.fill(this._padding, this._position, this._blockSize);
 	}
 
 	/**
@@ -243,26 +269,34 @@ export class StreamBlockify extends Transform {
 	 */
 	private _emitBlock(block: Buffer): void {
 		try {
-			const outputBlock = Buffer.from(block);
-
-			let finalBlock: Buffer;
-			if (this._blockTransform) {
-				this.logger.debug('Applying block transformation');
-				finalBlock = this._blockTransform(outputBlock);
-				this.logger.trace('Block size after transformation: %d', finalBlock.length);
-			} else {
-				finalBlock = outputBlock;
-			}
-
-			if (this._onBlock) {
-				this.logger.debug('Calling onBlock callback');
-				this._onBlock(finalBlock);
-			}
-
-			this.push(finalBlock);
+			const transformedBlock = this._blockTransform ? this._applyBlockTransform(block) : Buffer.from(block);
+			this._onBlock?.(transformedBlock);
+			this.push(transformedBlock);
 		} catch (error) {
-			this.logger.error('Error in _emitBlock: %O', error);
-			this.emit('error', error instanceof Error ? error : new Error(String(error)));
+			this._handleEmitBlockError(error);
 		}
+	}
+
+	/**
+	 * Applies the block transformation function to the given block.
+	 * @param block - The buffer containing the block of data to transform.
+	 * @returns The transformed block.
+	 * @private
+	 */
+	private _applyBlockTransform(block: Buffer): Buffer {
+		this.logger.debug('Applying block transformation');
+		const transformedBlock = this._blockTransform!(Buffer.from(block));
+		this.logger.trace('Block size after transformation: %d', transformedBlock.length);
+		return transformedBlock;
+	}
+
+	/**
+	 * Handles errors that occur during block emission.
+	 * @param error - The error to handle.
+	 * @private
+	 */
+	private _handleEmitBlockError(error: unknown): void {
+		this.logger.error('Error in _emitBlock: %O', error);
+		this.emit('error', error instanceof Error ? error : new Error(String(error)));
 	}
 }
