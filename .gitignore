@@ -132,3 +132,5 @@ dist
 type-docs/
 __examples__/basic-usage/output.txt
 __benchmark__/results/
+__examples__/**/*.pcm*
+__examples__/**/*.bin

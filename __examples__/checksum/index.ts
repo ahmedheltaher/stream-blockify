@@ -1,43 +1,45 @@
 /* eslint-disable no-console */
 
-import crypto from 'crypto';
-import fs from 'fs';
-import path from 'path';
-import { StreamBlockify } from '../../src/stream-blockify';
+import { createHash } from 'crypto';
+import { createReadStream } from 'fs';
+import { join } from 'path';
+import { pipeline } from 'stream/promises';
+import { StreamBlockify } from '../../src';
 
 /**
- * Calculates MD5 checksums for each block of a file
- * @returns Promise that resolves when processing is complete
+ * Processes a file in blocks and calculates checksums for each block
+ *
+ * @param inputFilePath Path to the input file
  */
-async function run(): Promise<void> {
-	const filePath = path.join(__dirname, 'example.txt');
-	console.log('Checksumming - Calculate checksums per block');
-
-	const readStream = fs.createReadStream(filePath);
+async function processFileWithChecksums(inputFilePath: string) {
 	const blockify = new StreamBlockify({
-		blockSize: 1024,
+		blockSize: 4096,
+		emitPartial: true,
 		onBlock: block => {
-			const md5sum = crypto.createHash('md5').update(block).digest('hex');
-			console.log(`Block checksum (MD5): ${md5sum}`);
+			const hash = createHash('sha256').update(block).digest('hex');
+			console.log(`Block checksum: ${hash}`);
 		}
 	});
 
-	let totalSize = 0;
-
-	return new Promise((resolve, reject) => {
-		blockify.on('data', chunk => {
-			totalSize += chunk.length;
-		});
-
-		blockify.on('end', () => {
-			console.log(`Processed ${(totalSize / 1024).toFixed(2)} KB of data`);
-			resolve();
-		});
-
-		readStream.pipe(blockify).resume();
-		readStream.on('error', reject);
-		blockify.on('error', reject);
+	let blockCount = 0;
+	blockify.on('data', () => {
+		blockCount++;
 	});
+
+	try {
+		await pipeline(createReadStream(inputFilePath), blockify);
+		console.log(`Processed ${blockCount} blocks from file`);
+	} catch (error) {
+		console.error('Error processing file:', error);
+	}
 }
 
-run().catch(console.error);
+async function main() {
+	const fileName = 'example-data-file.bin';
+	const filePath = join(__dirname, fileName);
+
+	console.log(`Processing file: ${filePath}`);
+	await processFileWithChecksums(filePath);
+}
+
+main().catch(console.error);
